@@ -1,0 +1,2764 @@
+{
+  "schema": "rokid.music.tab-score",
+  "schemaVersion": 1,
+  "metadata": {
+    "title": "老男孩",
+    "artist": "筷子兄弟"
+  },
+  "defaults": {
+    "ppq": 960,
+    "tempo": {
+      "bpm": 72,
+      "beatUnit": 4,
+      "text": null
+    },
+    "timeSignature": {
+      "beats": 4,
+      "beatType": 4,
+      "symbol": "normal",
+      "visible": true
+    },
+    "keySignature": {
+      "fifths": 0,
+      "mode": "major",
+      "visible": false
+    },
+    "tuning": {
+      "name": "Standard tuning",
+      "capo": 0,
+      "strings": [
+        {
+          "number": 1,
+          "pitch": "E4"
+        },
+        {
+          "number": 2,
+          "pitch": "B3"
+        },
+        {
+          "number": 3,
+          "pitch": "G3"
+        },
+        {
+          "number": 4,
+          "pitch": "D3"
+        },
+        {
+          "number": 5,
+          "pitch": "A2"
+        },
+        {
+          "number": 6,
+          "pitch": "E2"
+        }
+      ]
+    },
+    "notation": {
+      "staff": "tab",
+      "showRhythm": true,
+      "showStringLabels": true,
+      "colorProfile": "rokid-green"
+    }
+  },
+  "tracks": [
+    {
+      "id": "gtr1",
+      "name": "Electric Guitar",
+      "instrument": "electric-guitar",
+      "midiProgram": 30,
+      "stringCount": 6,
+      "tuningRef": "defaults.tuning",
+      "visible": true,
+      "playback": {
+        "muted": false,
+        "solo": false
+      }
+    }
+  ],
+  "systems": [
+    {
+      "id": "sys-1",
+      "measureIds": [
+        "m1",
+        "m2",
+        "m3",
+        "m4"
+      ]
+    },
+    {
+      "id": "sys-5",
+      "measureIds": [
+        "m5",
+        "m6",
+        "m7",
+        "m8"
+      ]
+    },
+    {
+      "id": "sys-9",
+      "measureIds": [
+        "m9"
+      ]
+    }
+  ],
+  "measures": [
+    {
+      "id": "m1",
+      "number": 1,
+      "trackId": "gtr1",
+      "startTick": 0,
+      "durationTicks": 3840,
+      "attributes": {},
+      "barline": {
+        "left": "single",
+        "right": "single",
+        "repeatStart": false,
+        "repeatEnd": false,
+        "repeatCount": null,
+        "ending": null
+      },
+      "events": [
+        {
+          "id": "m1e11",
+          "type": "rest",
+          "tick": 0,
+          "duration": {
+            "base": 2,
+            "dots": 0
+          },
+          "voice": 1
+        },
+        {
+          "id": "m1e10",
+          "type": "rest",
+          "tick": 1920,
+          "duration": {
+            "base": 8,
+            "dots": 0
+          },
+          "voice": 1
+        },
+        {
+          "id": "m1e1",
+          "type": "note",
+          "tick": 2400,
+          "duration": {
+            "base": 16,
+            "dots": 0
+          },
+          "voice": 1,
+          "beamGroup": "m1b1",
+          "notes": [
+            {
+              "id": "m1e1n1",
+              "string": 2,
+              "fret": 8,
+              "display": "8",
+              "status": "normal",
+              "effects": []
+            }
+          ],
+          "articulations": []
+        },
+        {
+          "id": "m1e2",
+          "type": "note",
+          "tick": 2640,
+          "duration": {
+            "base": 16,
+            "dots": 0
+          },
+          "voice": 1,
+          "beamGroup": "m1b1",
+          "notes": [
+            {
+              "id": "m1e2n1",
+              "string": 2,
+              "fret": 8,
+              "display": "(8)",
+              "status": "tied",
+              "effects": []
+            }
+          ],
+          "articulations": []
+        },
+        {
+          "id": "m1e3",
+          "type": "note",
+          "tick": 2880,
+          "duration": {
+            "base": 16,
+            "dots": 0
+          },
+          "voice": 1,
+          "beamGroup": "m1b2",
+          "notes": [
+            {
+              "id": "m1e3n1",
+              "string": 2,
+              "fret": 8,
+              "display": "(8)",
+              "status": "tied",
+              "effects": []
+            }
+          ],
+          "articulations": []
+        },
+        {
+          "id": "m1e9",
+          "type": "note",
+          "tick": 3120,
+          "duration": {
+            "base": 16,
+            "dots": 0
+          },
+          "voice": 1,
+          "beamGroup": "m1b2",
+          "notes": [
+            {
+              "id": "m1n9_1",
+              "string": 2,
+              "fret": 6,
+              "display": "6",
+              "pitch": null,
+              "status": "normal",
+              "leftHandFinger": null,
+              "rightHandFinger": null,
+              "effects": [],
+              "confidence": 1
+            }
+          ],
+          "articulations": []
+        },
+        {
+          "id": "m1e4",
+          "type": "note",
+          "tick": 3360,
+          "duration": {
+            "base": 16,
+            "dots": 0
+          },
+          "voice": 1,
+          "beamGroup": "m1b2",
+          "notes": [
+            {
+              "id": "m1e4n1",
+              "string": 2,
+              "fret": 5,
+              "display": "5",
+              "status": "normal",
+              "effects": []
+            }
+          ],
+          "articulations": []
+        },
+        {
+          "id": "m1e5",
+          "type": "note",
+          "tick": 3600,
+          "duration": {
+            "base": 16,
+            "dots": 0
+          },
+          "voice": 1,
+          "beamGroup": "m1b2",
+          "notes": [
+            {
+              "id": "m1e5n1",
+              "string": 2,
+              "fret": 5,
+              "display": "5",
+              "status": "normal",
+              "effects": []
+            }
+          ],
+          "articulations": []
+        }
+      ],
+      "spanners": [
+        {
+          "id": "m1s1",
+          "type": "bend",
+          "from": "m1e2n1",
+          "label": "1/2",
+          "curve": [
+            {
+              "at": 0,
+              "alter": 0
+            },
+            {
+              "at": 0.5,
+              "alter": 1
+            },
+            {
+              "at": 1,
+              "alter": 0
+            }
+          ]
+        },
+        {
+          "id": "m1s2",
+          "type": "hammer-on",
+          "from": "m1e4n1",
+          "to": "m1e5n1",
+          "label": "H"
+        },
+        {
+          "id": "m1sp1",
+          "type": "tie",
+          "from": "m1e2n1",
+          "to": "m1e3n1",
+          "placement": "below"
+        }
+      ],
+      "directions": [],
+      "source": {
+        "frame": 1,
+        "confidence": 0.66,
+        "rawText": "Re-read from full-resolution source crop; verify technique endpoint if needed."
+      },
+      "_showTimeSig": true
+    },
+    {
+      "id": "m2",
+      "number": 2,
+      "trackId": "gtr1",
+      "startTick": 3840,
+      "durationTicks": 3840,
+      "attributes": {},
+      "barline": {
+        "left": "single",
+        "right": "single",
+        "repeatStart": false,
+        "repeatEnd": false,
+        "repeatCount": null,
+        "ending": null
+      },
+      "events": [
+        {
+          "id": "m2e1",
+          "type": "note",
+          "tick": 0,
+          "duration": {
+            "base": 16,
+            "dots": 0
+          },
+          "voice": 1,
+          "beamGroup": "m2b1",
+          "notes": [
+            {
+              "id": "m2e1n1",
+              "string": 2,
+              "fret": 5,
+              "display": "5",
+              "status": "normal",
+              "effects": []
+            }
+          ],
+          "articulations": []
+        },
+        {
+          "id": "m2e2",
+          "type": "note",
+          "tick": 240,
+          "duration": {
+            "base": 16,
+            "dots": 0
+          },
+          "voice": 1,
+          "beamGroup": "m2b1",
+          "notes": [
+            {
+              "id": "m2e2n1",
+              "string": 2,
+              "fret": 6,
+              "display": "6",
+              "status": "normal",
+              "effects": []
+            }
+          ],
+          "articulations": []
+        },
+        {
+          "id": "m2e4",
+          "type": "note",
+          "tick": 480,
+          "duration": {
+            "base": 8,
+            "dots": 0
+          },
+          "voice": 1,
+          "beamGroup": "m2b1",
+          "notes": [
+            {
+              "id": "m2e4n1",
+              "string": 2,
+              "fret": 8,
+              "display": "8",
+              "status": "normal",
+              "effects": []
+            }
+          ],
+          "articulations": []
+        },
+        {
+          "id": "m2e5",
+          "type": "note",
+          "tick": 960,
+          "duration": {
+            "base": 8,
+            "dots": 0
+          },
+          "voice": 1,
+          "beamGroup": "m2b2",
+          "notes": [
+            {
+              "id": "m2e5n1",
+              "string": 2,
+              "fret": 8,
+              "display": "(8)",
+              "status": "tied",
+              "effects": []
+            }
+          ],
+          "articulations": []
+        },
+        {
+          "id": "m2e6",
+          "type": "note",
+          "tick": 1440,
+          "duration": {
+            "base": 16,
+            "dots": 0
+          },
+          "voice": 1,
+          "beamGroup": "m2b2",
+          "notes": [
+            {
+              "id": "m2e6n1",
+              "string": 2,
+              "fret": 8,
+              "display": "8",
+              "status": "normal",
+              "effects": []
+            }
+          ],
+          "articulations": []
+        },
+        {
+          "id": "m2e7",
+          "type": "note",
+          "tick": 1680,
+          "duration": {
+            "base": 16,
+            "dots": 0
+          },
+          "voice": 1,
+          "beamGroup": "m2b2",
+          "notes": [
+            {
+              "id": "m2e7n1",
+              "string": 2,
+              "fret": 10,
+              "display": "10",
+              "status": "normal",
+              "effects": []
+            }
+          ],
+          "articulations": []
+        },
+        {
+          "id": "m2e8",
+          "type": "note",
+          "tick": 1920,
+          "duration": {
+            "base": 2,
+            "dots": 0
+          },
+          "voice": 1,
+          "beamGroup": "m2b3",
+          "notes": [
+            {
+              "id": "m2e8n1",
+              "string": 2,
+              "fret": 8,
+              "display": "8",
+              "status": "ring",
+              "effects": []
+            }
+          ],
+          "articulations": []
+        }
+      ],
+      "spanners": [
+        {
+          "id": "m2sp1",
+          "type": "slide",
+          "from": "m2e2n1",
+          "to": "m2e4n1",
+          "slideKind": "shift",
+          "label": "sl."
+        },
+        {
+          "id": "m2sp2",
+          "type": "tie",
+          "from": "m2e4n1",
+          "to": "m2e5n1",
+          "placement": "below"
+        },
+        {
+          "id": "m2sp3",
+          "type": "slur",
+          "from": "m2e2n1",
+          "to": "m2e4n1",
+          "placement": "below"
+        },
+        {
+          "id": "m2sp4",
+          "type": "slide",
+          "from": "m2e6n1",
+          "to": "m2e7n1",
+          "slideKind": "shift",
+          "label": "sl."
+        },
+        {
+          "id": "m2sp5",
+          "type": "tie",
+          "from": "m2e8n1",
+          "to": "m3e1n1",
+          "placement": "below"
+        },
+        {
+          "id": "m2sp6",
+          "type": "vibrato",
+          "from": "m2e4n1",
+          "to": "m2e6n1",
+          "width": "normal"
+        },
+        {
+          "id": "m2sp7",
+          "type": "vibrato",
+          "from": "m2e8n1",
+          "to": "m3e1n1",
+          "width": "normal"
+        }
+      ],
+      "directions": [],
+      "source": {
+        "frame": 1,
+        "confidence": 0.66,
+        "rawText": "Re-read from full-resolution source crop; verify technique endpoint if needed."
+      },
+      "_showTimeSig": false
+    },
+    {
+      "id": "m3",
+      "number": 3,
+      "trackId": "gtr1",
+      "startTick": 7680,
+      "durationTicks": 3840,
+      "attributes": {},
+      "barline": {
+        "left": "single",
+        "right": "single",
+        "repeatStart": false,
+        "repeatEnd": false,
+        "repeatCount": null,
+        "ending": null
+      },
+      "events": [
+        {
+          "id": "m3e1",
+          "type": "note",
+          "tick": 0,
+          "duration": {
+            "base": 4,
+            "dots": 0
+          },
+          "voice": 1,
+          "beamGroup": "m3b1",
+          "notes": [
+            {
+              "id": "m3e1n1",
+              "string": 2,
+              "fret": 8,
+              "display": "(8)",
+              "status": "tied",
+              "effects": []
+            }
+          ],
+          "articulations": []
+        },
+        {
+          "id": "m3e3",
+          "type": "note",
+          "tick": 960,
+          "duration": {
+            "base": 8,
+            "dots": 0,
+            "tuplet": {
+              "actual": 3,
+              "normal": 2
+            }
+          },
+          "voice": 1,
+          "beamGroup": "m3b2",
+          "notes": [
+            {
+              "id": "m3e3n1",
+              "string": 1,
+              "fret": 8,
+              "display": "8",
+              "status": "normal",
+              "effects": []
+            }
+          ],
+          "articulations": []
+        },
+        {
+          "id": "m3e4",
+          "type": "note",
+          "tick": 1280,
+          "duration": {
+            "base": 8,
+            "dots": 0,
+            "tuplet": {
+              "actual": 3,
+              "normal": 2
+            }
+          },
+          "voice": 1,
+          "beamGroup": "m3b2",
+          "notes": [
+            {
+              "id": "m3e4n1",
+              "string": 1,
+              "fret": 7,
+              "display": "7",
+              "status": "normal",
+              "effects": []
+            }
+          ],
+          "articulations": []
+        },
+        {
+          "id": "m3e5",
+          "type": "note",
+          "tick": 1600,
+          "duration": {
+            "base": 8,
+            "dots": 0,
+            "tuplet": {
+              "actual": 3,
+              "normal": 2
+            }
+          },
+          "voice": 1,
+          "beamGroup": "m3b2",
+          "notes": [
+            {
+              "id": "m3e5n1",
+              "string": 2,
+              "fret": 8,
+              "display": "8",
+              "status": "normal",
+              "effects": []
+            }
+          ],
+          "articulations": []
+        },
+        {
+          "id": "m3e6",
+          "type": "note",
+          "tick": 1920,
+          "duration": {
+            "base": 2,
+            "dots": 0
+          },
+          "voice": 1,
+          "beamGroup": "m3b3",
+          "notes": [
+            {
+              "id": "m3e6n1",
+              "string": 2,
+              "fret": 8,
+              "display": "8",
+              "status": "ring",
+              "effects": []
+            }
+          ],
+          "articulations": []
+        }
+      ],
+      "spanners": [
+        {
+          "id": "m3s1",
+          "type": "pull-off",
+          "from": "m3e3n1",
+          "to": "m3e4n1",
+          "label": "P"
+        },
+        {
+          "id": "m3sp1",
+          "type": "hammer-on",
+          "to": "m3e3n1",
+          "label": "H",
+          "slideKind": "hammer-in",
+          "fromFret": 7
+        },
+        {
+          "id": "m3sp2",
+          "type": "vibrato",
+          "from": "m3e6n1",
+          "width": "normal"
+        }
+      ],
+      "directions": [],
+      "source": {
+        "frame": 8,
+        "confidence": 0.66,
+        "rawText": "Re-read from full-resolution source crop; verify technique endpoint if needed."
+      },
+      "_showTimeSig": false
+    },
+    {
+      "id": "m4",
+      "number": 4,
+      "trackId": "gtr1",
+      "startTick": 11520,
+      "durationTicks": 3840,
+      "barline": {
+        "left": "single",
+        "right": "single",
+        "repeatStart": false,
+        "repeatEnd": false,
+        "repeatCount": null,
+        "ending": null
+      },
+      "events": [
+        {
+          "id": "m4e1",
+          "type": "note",
+          "tick": 0,
+          "duration": {
+            "base": 16,
+            "dots": 0
+          },
+          "voice": 1,
+          "beamGroup": "m4b1",
+          "notes": [
+            {
+              "id": "m4n1_1",
+              "string": 2,
+              "fret": 5,
+              "display": "5",
+              "pitch": null,
+              "status": "normal",
+              "leftHandFinger": null,
+              "rightHandFinger": null,
+              "effects": [],
+              "confidence": 1
+            }
+          ],
+          "articulations": []
+        },
+        {
+          "id": "m4e2",
+          "type": "note",
+          "tick": 240,
+          "duration": {
+            "base": 16,
+            "dots": 0
+          },
+          "voice": 1,
+          "beamGroup": "m4b1",
+          "notes": [
+            {
+              "id": "m4n2_1",
+              "string": 2,
+              "fret": 5,
+              "display": "(5)",
+              "pitch": null,
+              "status": "tied",
+              "leftHandFinger": null,
+              "rightHandFinger": null,
+              "effects": [],
+              "confidence": 1
+            }
+          ],
+          "articulations": []
+        },
+        {
+          "id": "m4e3",
+          "type": "note",
+          "tick": 480,
+          "duration": {
+            "base": 16,
+            "dots": 0
+          },
+          "voice": 1,
+          "beamGroup": "m4b1",
+          "notes": [
+            {
+              "id": "m4n3_1",
+              "string": 2,
+              "fret": 5,
+              "display": "(5)",
+              "pitch": null,
+              "status": "tied",
+              "leftHandFinger": null,
+              "rightHandFinger": null,
+              "effects": [],
+              "confidence": 1
+            }
+          ],
+          "articulations": []
+        },
+        {
+          "id": "m4e4",
+          "type": "note",
+          "tick": 720,
+          "duration": {
+            "base": 16,
+            "dots": 0
+          },
+          "voice": 1,
+          "beamGroup": "m4b1",
+          "notes": [
+            {
+              "id": "m4n4_1",
+              "string": 2,
+              "fret": 5,
+              "display": "(5)",
+              "pitch": null,
+              "status": "tied",
+              "leftHandFinger": null,
+              "rightHandFinger": null,
+              "effects": [],
+              "confidence": 1
+            }
+          ],
+          "articulations": []
+        },
+        {
+          "id": "m4e5",
+          "type": "note",
+          "tick": 960,
+          "duration": {
+            "base": 16,
+            "dots": 0
+          },
+          "voice": 1,
+          "beamGroup": "m4b2",
+          "notes": [
+            {
+              "id": "m4n5_1",
+              "string": 2,
+              "fret": 5,
+              "display": "(5)",
+              "pitch": null,
+              "status": "tied",
+              "leftHandFinger": null,
+              "rightHandFinger": null,
+              "effects": [],
+              "confidence": 1
+            }
+          ],
+          "articulations": []
+        },
+        {
+          "id": "m4e6",
+          "type": "note",
+          "tick": 1200,
+          "duration": {
+            "base": 16,
+            "dots": 0
+          },
+          "voice": 1,
+          "beamGroup": "m4b2",
+          "notes": [
+            {
+              "id": "m4n6_1",
+              "string": 2,
+              "fret": 5,
+              "display": "5",
+              "pitch": null,
+              "status": "normal",
+              "leftHandFinger": null,
+              "rightHandFinger": null,
+              "effects": [],
+              "confidence": 1
+            }
+          ],
+          "articulations": []
+        },
+        {
+          "id": "m4e7",
+          "type": "note",
+          "tick": 1440,
+          "duration": {
+            "base": 8,
+            "dots": 0
+          },
+          "voice": 1,
+          "beamGroup": "m4b2",
+          "notes": [
+            {
+              "id": "m4n7_1",
+              "string": 3,
+              "fret": 5,
+              "display": "5",
+              "pitch": null,
+              "status": "normal",
+              "leftHandFinger": null,
+              "rightHandFinger": null,
+              "effects": [],
+              "confidence": 1
+            }
+          ],
+          "articulations": []
+        },
+        {
+          "id": "m4e8",
+          "type": "note",
+          "tick": 1920,
+          "duration": {
+            "base": 2,
+            "dots": 0
+          },
+          "voice": 1,
+          "beamGroup": "m4b3",
+          "notes": [
+            {
+              "id": "m4n8_1",
+              "string": 4,
+              "fret": 5,
+              "display": "5",
+              "pitch": null,
+              "status": "normal",
+              "leftHandFinger": null,
+              "rightHandFinger": null,
+              "effects": [],
+              "confidence": 1
+            }
+          ],
+          "articulations": []
+        }
+      ],
+      "spanners": [
+        {
+          "id": "m4sp1",
+          "type": "tie",
+          "from": "m4n1_1",
+          "to": "m4n2_1",
+          "placement": "below"
+        },
+        {
+          "id": "m4sp2",
+          "type": "tie",
+          "from": "m4n2_1",
+          "to": "m4n3_1",
+          "placement": "below"
+        },
+        {
+          "id": "m4sp3",
+          "type": "tie",
+          "from": "m4n3_1",
+          "to": "m4n4_1",
+          "placement": "below"
+        },
+        {
+          "id": "m4sp4",
+          "type": "bend",
+          "from": "m4n2_1",
+          "to": "m4n4_1",
+          "label": "1/2",
+          "curve": [
+            {
+              "at": 0,
+              "alter": 0
+            },
+            {
+              "at": 0.5,
+              "alter": 1
+            },
+            {
+              "at": 1,
+              "alter": 0
+            }
+          ]
+        },
+        {
+          "id": "m4sp5",
+          "type": "tie",
+          "from": "m4n4_1",
+          "to": "m4n5_1",
+          "placement": "below"
+        },
+        {
+          "id": "m4sp6",
+          "type": "bend",
+          "from": "m4n4_1",
+          "to": "m4n6_1",
+          "label": "1/2",
+          "curve": [
+            {
+              "at": 0,
+              "alter": 0
+            },
+            {
+              "at": 0.5,
+              "alter": 1
+            },
+            {
+              "at": 1,
+              "alter": 0
+            }
+          ]
+        },
+        {
+          "id": "m4sp7",
+          "type": "vibrato",
+          "from": "m4n8_1",
+          "width": "normal"
+        }
+      ],
+      "directions": [],
+      "source": {
+        "sourceId": "manual-editor",
+        "page": null,
+        "frame": null,
+        "bbox": null,
+        "rawText": "empty measure inserted in editor",
+        "confidence": 1
+      },
+      "_showTimeSig": false
+    },
+    {
+      "id": "m5",
+      "number": 5,
+      "trackId": "gtr1",
+      "startTick": 15360,
+      "durationTicks": 3840,
+      "attributes": {},
+      "barline": {
+        "left": "single",
+        "right": "single",
+        "repeatStart": false,
+        "repeatEnd": false,
+        "repeatCount": null,
+        "ending": null
+      },
+      "events": [
+        {
+          "id": "m5e1",
+          "type": "note",
+          "tick": 0,
+          "duration": {
+            "base": 16,
+            "dots": 0
+          },
+          "voice": 1,
+          "beamGroup": "m5b1",
+          "notes": [
+            {
+              "id": "m5e1n1_1",
+              "string": 2,
+              "fret": 5,
+              "display": "5",
+              "pitch": null,
+              "status": "normal",
+              "leftHandFinger": null,
+              "rightHandFinger": null,
+              "effects": [],
+              "confidence": 1
+            }
+          ],
+          "articulations": []
+        },
+        {
+          "id": "m5e2",
+          "type": "note",
+          "tick": 240,
+          "duration": {
+            "base": 16,
+            "dots": 0
+          },
+          "voice": 1,
+          "beamGroup": "m5b1",
+          "notes": [
+            {
+              "id": "m5e2n1_1",
+              "string": 2,
+              "fret": 5,
+              "display": "(5)",
+              "pitch": null,
+              "status": "tied",
+              "leftHandFinger": null,
+              "rightHandFinger": null,
+              "effects": [],
+              "confidence": 1
+            }
+          ],
+          "articulations": []
+        },
+        {
+          "id": "m5e3",
+          "type": "note",
+          "tick": 480,
+          "duration": {
+            "base": 16,
+            "dots": 0
+          },
+          "voice": 1,
+          "beamGroup": "m5b1",
+          "notes": [
+            {
+              "id": "m5e3n1_1",
+              "string": 2,
+              "fret": 5,
+              "display": "(5)",
+              "pitch": null,
+              "status": "tied",
+              "leftHandFinger": null,
+              "rightHandFinger": null,
+              "effects": [],
+              "confidence": 1
+            }
+          ],
+          "articulations": []
+        },
+        {
+          "id": "m5e4",
+          "type": "note",
+          "tick": 720,
+          "duration": {
+            "base": 16,
+            "dots": 0
+          },
+          "voice": 1,
+          "beamGroup": "m5b1",
+          "notes": [
+            {
+              "id": "m5e4n1_1",
+              "string": 2,
+              "fret": 5,
+              "display": "(5)",
+              "pitch": null,
+              "status": "tied",
+              "leftHandFinger": null,
+              "rightHandFinger": null,
+              "effects": [],
+              "confidence": 1
+            }
+          ],
+          "articulations": []
+        },
+        {
+          "id": "m5e5",
+          "type": "note",
+          "tick": 960,
+          "duration": {
+            "base": 16,
+            "dots": 0
+          },
+          "voice": 1,
+          "beamGroup": "m5b4",
+          "notes": [
+            {
+              "id": "m5e5n1_1",
+              "string": 2,
+              "fret": 5,
+              "display": "(5)",
+              "pitch": null,
+              "status": "tied",
+              "leftHandFinger": null,
+              "rightHandFinger": null,
+              "effects": [],
+              "confidence": 1
+            }
+          ],
+          "articulations": []
+        },
+        {
+          "id": "m5e7",
+          "type": "note",
+          "tick": 1200,
+          "duration": {
+            "base": 16,
+            "dots": 0
+          },
+          "voice": 1,
+          "beamGroup": "m5b4",
+          "notes": [
+            {
+              "id": "m5e7n1_1",
+              "string": 3,
+              "fret": 5,
+              "display": "5",
+              "pitch": null,
+              "status": "normal",
+              "leftHandFinger": null,
+              "rightHandFinger": null,
+              "effects": [],
+              "confidence": 1
+            }
+          ],
+          "articulations": []
+        },
+        {
+          "id": "m5e8",
+          "type": "note",
+          "tick": 1440,
+          "duration": {
+            "base": 16,
+            "dots": 0
+          },
+          "voice": 1,
+          "beamGroup": "m5b4",
+          "notes": [
+            {
+              "id": "m5e8n1_1",
+              "string": 4,
+              "fret": 5,
+              "display": "5",
+              "pitch": null,
+              "status": "normal",
+              "leftHandFinger": null,
+              "rightHandFinger": null,
+              "effects": [],
+              "confidence": 1
+            }
+          ],
+          "articulations": []
+        },
+        {
+          "id": "m5e12",
+          "type": "note",
+          "tick": 1680,
+          "duration": {
+            "base": 16,
+            "dots": 0
+          },
+          "voice": 1,
+          "beamGroup": "m5b4",
+          "notes": [
+            {
+              "id": "m5n12_1",
+              "string": 4,
+              "fret": 7,
+              "display": "7",
+              "pitch": null,
+              "status": "normal",
+              "leftHandFinger": null,
+              "rightHandFinger": null,
+              "effects": [],
+              "confidence": 1
+            }
+          ],
+          "articulations": []
+        },
+        {
+          "id": "m5e13",
+          "type": "note",
+          "tick": 1920,
+          "duration": {
+            "base": 4,
+            "dots": 0
+          },
+          "voice": 1,
+          "beamGroup": null,
+          "notes": [
+            {
+              "id": "m5n13_1",
+              "string": 4,
+              "fret": 5,
+              "display": "5",
+              "pitch": null,
+              "status": "normal",
+              "leftHandFinger": null,
+              "rightHandFinger": null,
+              "effects": [],
+              "confidence": 1
+            }
+          ],
+          "articulations": []
+        },
+        {
+          "id": "m5e10",
+          "type": "rest",
+          "tick": 2880,
+          "duration": {
+            "base": 8,
+            "dots": 1
+          },
+          "voice": 1,
+          "beamGroup": null,
+          "notes": [],
+          "articulations": []
+        },
+        {
+          "id": "m5e11",
+          "type": "note",
+          "tick": 3600,
+          "duration": {
+            "base": 16,
+            "dots": 0
+          },
+          "voice": 1,
+          "beamGroup": null,
+          "notes": [
+            {
+              "id": "m5e11n1_1",
+              "string": 1,
+              "fret": 15,
+              "display": "15",
+              "pitch": null,
+              "status": "normal",
+              "leftHandFinger": null,
+              "rightHandFinger": null,
+              "effects": [],
+              "confidence": 1
+            }
+          ],
+          "articulations": []
+        }
+      ],
+      "spanners": [
+        {
+          "id": "m5sp1",
+          "type": "tie",
+          "from": "m5e1n1_1",
+          "to": "m5e2n1_1",
+          "placement": "below"
+        },
+        {
+          "id": "m5sp2",
+          "type": "tie",
+          "from": "m5e3n1_1",
+          "to": "m5e4n1_1",
+          "placement": "below"
+        },
+        {
+          "id": "m5sp3",
+          "type": "tie",
+          "from": "m5e2n1_1",
+          "to": "m5e3n1_1",
+          "placement": "below"
+        },
+        {
+          "id": "m5sp4",
+          "type": "tie",
+          "from": "m5e4n1_1",
+          "to": "m5e5n1_1",
+          "placement": "below"
+        },
+        {
+          "id": "m5sp5",
+          "type": "slide",
+          "from": "m5e8n1_1",
+          "to": "m5n12_1",
+          "slideKind": "shift",
+          "label": "sl."
+        },
+        {
+          "id": "m5sp6",
+          "type": "slur",
+          "from": "m5e8n1_1",
+          "to": "m5n12_1",
+          "placement": "below"
+        },
+        {
+          "id": "m5sp7",
+          "type": "bend",
+          "from": "m5e2n1_1",
+          "to": "m5e4n1_1",
+          "label": "1/2",
+          "curve": [
+            {
+              "at": 0,
+              "alter": 0
+            },
+            {
+              "at": 0.5,
+              "alter": 1
+            },
+            {
+              "at": 1,
+              "alter": 0
+            }
+          ]
+        },
+        {
+          "id": "m5sp8",
+          "type": "bend",
+          "from": "m5e4n1_1",
+          "to": "m5e7n1_1",
+          "label": "1/2",
+          "curve": [
+            {
+              "at": 0,
+              "alter": 0
+            },
+            {
+              "at": 0.5,
+              "alter": 1
+            },
+            {
+              "at": 1,
+              "alter": 0
+            }
+          ]
+        },
+        {
+          "id": "m5sp9",
+          "type": "vibrato",
+          "from": "m5n13_1",
+          "width": "normal"
+        }
+      ],
+      "directions": [],
+      "source": {
+        "sourceId": "manual-dup",
+        "page": null,
+        "frame": null,
+        "bbox": null,
+        "rawText": "duplicated from measure 4",
+        "confidence": 1
+      },
+      "_showTimeSig": true
+    },
+    {
+      "id": "m6",
+      "number": 6,
+      "trackId": "gtr1",
+      "startTick": 19200,
+      "durationTicks": 3840,
+      "barline": {
+        "left": "single",
+        "right": "single",
+        "repeatStart": false,
+        "repeatEnd": false,
+        "repeatCount": null,
+        "ending": null
+      },
+      "events": [
+        {
+          "id": "m6e1",
+          "type": "note",
+          "tick": 0,
+          "duration": {
+            "base": 4,
+            "dots": 0
+          },
+          "voice": 1,
+          "beamGroup": null,
+          "notes": [
+            {
+              "id": "m6n1_1",
+              "string": 2,
+              "fret": 15,
+              "display": "15",
+              "pitch": null,
+              "status": "normal",
+              "leftHandFinger": null,
+              "rightHandFinger": null,
+              "effects": [],
+              "confidence": 1
+            }
+          ],
+          "articulations": []
+        },
+        {
+          "id": "m6e2",
+          "type": "note",
+          "tick": 960,
+          "duration": {
+            "base": 4,
+            "dots": 0
+          },
+          "voice": 1,
+          "beamGroup": null,
+          "notes": [
+            {
+              "id": "m6n2_1",
+              "string": 2,
+              "fret": 15,
+              "display": "15",
+              "pitch": null,
+              "status": "normal",
+              "leftHandFinger": null,
+              "rightHandFinger": null,
+              "effects": [],
+              "confidence": 1
+            },
+            {
+              "id": "m6n2_2",
+              "string": 1,
+              "fret": 15,
+              "display": "15",
+              "pitch": null,
+              "status": "normal",
+              "leftHandFinger": null,
+              "rightHandFinger": null,
+              "effects": [],
+              "confidence": 1
+            }
+          ],
+          "articulations": []
+        },
+        {
+          "id": "m6e3",
+          "type": "note",
+          "tick": 1920,
+          "duration": {
+            "base": 8,
+            "dots": 0
+          },
+          "voice": 1,
+          "beamGroup": "m6b1",
+          "notes": [
+            {
+              "id": "m6n3_1",
+              "string": 2,
+              "fret": 15,
+              "display": "15",
+              "pitch": null,
+              "status": "normal",
+              "leftHandFinger": null,
+              "rightHandFinger": null,
+              "effects": [],
+              "confidence": 1
+            }
+          ],
+          "articulations": []
+        },
+        {
+          "id": "m6e4",
+          "type": "note",
+          "tick": 2400,
+          "duration": {
+            "base": 16,
+            "dots": 0
+          },
+          "voice": 1,
+          "beamGroup": "m6b1",
+          "notes": [
+            {
+              "id": "m6n4_1",
+              "string": 2,
+              "fret": 15,
+              "display": "(15)",
+              "pitch": null,
+              "status": "tied",
+              "leftHandFinger": null,
+              "rightHandFinger": null,
+              "effects": [],
+              "confidence": 1
+            }
+          ],
+          "articulations": []
+        },
+        {
+          "id": "m6e5",
+          "type": "note",
+          "tick": 2640,
+          "duration": {
+            "base": 16,
+            "dots": 0
+          },
+          "voice": 1,
+          "beamGroup": "m6b1",
+          "notes": [
+            {
+              "id": "m6n5_1",
+              "string": 2,
+              "fret": 13,
+              "display": "13",
+              "pitch": null,
+              "status": "normal",
+              "leftHandFinger": null,
+              "rightHandFinger": null,
+              "effects": [],
+              "confidence": 1
+            }
+          ],
+          "articulations": []
+        },
+        {
+          "id": "m6e6",
+          "type": "note",
+          "tick": 2880,
+          "duration": {
+            "base": 16,
+            "dots": 0
+          },
+          "voice": 1,
+          "beamGroup": "m6b2",
+          "notes": [
+            {
+              "id": "m6n6_1",
+              "string": 2,
+              "fret": 15,
+              "display": "15",
+              "pitch": null,
+              "status": "normal",
+              "leftHandFinger": null,
+              "rightHandFinger": null,
+              "effects": [],
+              "confidence": 1
+            }
+          ],
+          "articulations": []
+        },
+        {
+          "id": "m6e7",
+          "type": "note",
+          "tick": 3120,
+          "duration": {
+            "base": 16,
+            "dots": 0
+          },
+          "voice": 1,
+          "beamGroup": "m6b2",
+          "notes": [
+            {
+              "id": "m6n7_1",
+              "string": 3,
+              "fret": 14,
+              "display": "14",
+              "pitch": null,
+              "status": "normal",
+              "leftHandFinger": null,
+              "rightHandFinger": null,
+              "effects": [],
+              "confidence": 1
+            }
+          ],
+          "articulations": []
+        },
+        {
+          "id": "m6e8",
+          "type": "note",
+          "tick": 3360,
+          "duration": {
+            "base": 8,
+            "dots": 0
+          },
+          "voice": 1,
+          "beamGroup": "m6b2",
+          "notes": [
+            {
+              "id": "m6n8_1",
+              "string": 2,
+              "fret": 13,
+              "display": "13",
+              "pitch": null,
+              "status": "normal",
+              "leftHandFinger": null,
+              "rightHandFinger": null,
+              "effects": [],
+              "confidence": 1
+            }
+          ],
+          "articulations": []
+        }
+      ],
+      "spanners": [
+        {
+          "id": "m6sp1",
+          "type": "tie",
+          "from": "m6n3_1",
+          "to": "m6n4_1",
+          "placement": "below"
+        },
+        {
+          "id": "m6sp2",
+          "type": "bend",
+          "from": "m6n3_1",
+          "to": "m6n5_1",
+          "label": "full",
+          "curve": [
+            {
+              "at": 0,
+              "alter": 0
+            },
+            {
+              "at": 0.5,
+              "alter": 2
+            },
+            {
+              "at": 1,
+              "alter": 0
+            }
+          ]
+        },
+        {
+          "id": "m6sp3",
+          "type": "bend",
+          "from": "m6n1_1",
+          "label": "full",
+          "curve": [
+            {
+              "at": 0,
+              "alter": 0
+            },
+            {
+              "at": 0.7,
+              "alter": 2
+            },
+            {
+              "at": 1,
+              "alter": 2
+            }
+          ]
+        },
+        {
+          "id": "m6sp4",
+          "type": "bend",
+          "from": "m6n2_1",
+          "label": "full",
+          "curve": [
+            {
+              "at": 0,
+              "alter": 0
+            },
+            {
+              "at": 0.7,
+              "alter": 2
+            },
+            {
+              "at": 1,
+              "alter": 2
+            }
+          ]
+        },
+        {
+          "id": "m6sp5",
+          "type": "vibrato",
+          "from": "m6n8_1",
+          "width": "normal"
+        }
+      ],
+      "directions": [],
+      "source": {
+        "sourceId": "manual-editor",
+        "page": null,
+        "frame": null,
+        "bbox": null,
+        "rawText": "empty measure inserted in editor",
+        "confidence": 1
+      },
+      "_showTimeSig": false
+    },
+    {
+      "id": "m7",
+      "number": 7,
+      "trackId": "gtr1",
+      "startTick": 23040,
+      "durationTicks": 3840,
+      "barline": {
+        "left": "single",
+        "right": "single",
+        "repeatStart": false,
+        "repeatEnd": false,
+        "repeatCount": null,
+        "ending": null
+      },
+      "events": [
+        {
+          "id": "m7e1",
+          "type": "note",
+          "tick": 0,
+          "duration": {
+            "base": 16,
+            "dots": 0
+          },
+          "voice": 1,
+          "beamGroup": "m7b2",
+          "notes": [
+            {
+              "id": "m7n1_1",
+              "string": 1,
+              "fret": 15,
+              "display": "15",
+              "pitch": null,
+              "status": "normal",
+              "leftHandFinger": null,
+              "rightHandFinger": null,
+              "effects": [],
+              "confidence": 1
+            }
+          ],
+          "articulations": []
+        },
+        {
+          "id": "m7e2",
+          "type": "note",
+          "tick": 240,
+          "duration": {
+            "base": 16,
+            "dots": 0
+          },
+          "voice": 1,
+          "beamGroup": "m7b2",
+          "notes": [
+            {
+              "id": "m7n2_1",
+              "string": 2,
+              "fret": 13,
+              "display": "13",
+              "pitch": null,
+              "status": "normal",
+              "leftHandFinger": null,
+              "rightHandFinger": null,
+              "effects": [],
+              "confidence": 1
+            }
+          ],
+          "articulations": []
+        },
+        {
+          "id": "m7e3",
+          "type": "note",
+          "tick": 480,
+          "duration": {
+            "base": 8,
+            "dots": 0
+          },
+          "voice": 1,
+          "beamGroup": "m7b2",
+          "notes": [
+            {
+              "id": "m7n3_1",
+              "string": 2,
+              "fret": 13,
+              "display": "13",
+              "pitch": null,
+              "status": "normal",
+              "leftHandFinger": null,
+              "rightHandFinger": null,
+              "effects": [],
+              "confidence": 1
+            }
+          ],
+          "articulations": []
+        },
+        {
+          "id": "m7e4",
+          "type": "note",
+          "tick": 960,
+          "duration": {
+            "base": 8,
+            "dots": 0
+          },
+          "voice": 1,
+          "beamGroup": null,
+          "notes": [
+            {
+              "id": "m7n4_1",
+              "string": 2,
+              "fret": 13,
+              "display": "(13)",
+              "pitch": null,
+              "status": "tied",
+              "leftHandFinger": null,
+              "rightHandFinger": null,
+              "effects": [],
+              "confidence": 1
+            }
+          ],
+          "articulations": []
+        },
+        {
+          "id": "m7e5",
+          "type": "note",
+          "tick": 1440,
+          "duration": {
+            "base": 16,
+            "dots": 0,
+            "tuplet": {
+              "actual": 3,
+              "normal": 2
+            }
+          },
+          "voice": 1,
+          "beamGroup": "m7b1",
+          "notes": [
+            {
+              "id": "m7n5_1",
+              "string": 2,
+              "fret": 12,
+              "display": "12",
+              "pitch": null,
+              "status": "normal",
+              "leftHandFinger": null,
+              "rightHandFinger": null,
+              "effects": [],
+              "confidence": 1
+            }
+          ],
+          "articulations": []
+        },
+        {
+          "id": "m7e6",
+          "type": "note",
+          "tick": 1600,
+          "duration": {
+            "base": 16,
+            "dots": 0,
+            "tuplet": {
+              "actual": 3,
+              "normal": 2
+            }
+          },
+          "voice": 1,
+          "beamGroup": "m7b1",
+          "notes": [
+            {
+              "id": "m7n6_1",
+              "string": 2,
+              "fret": 13,
+              "display": "13",
+              "pitch": null,
+              "status": "normal",
+              "leftHandFinger": null,
+              "rightHandFinger": null,
+              "effects": [],
+              "confidence": 1
+            }
+          ],
+          "articulations": []
+        },
+        {
+          "id": "m7e7",
+          "type": "note",
+          "tick": 1760,
+          "duration": {
+            "base": 16,
+            "dots": 0,
+            "tuplet": {
+              "actual": 3,
+              "normal": 2
+            }
+          },
+          "voice": 1,
+          "beamGroup": "m7b1",
+          "notes": [
+            {
+              "id": "m7n7_1",
+              "string": 2,
+              "fret": 12,
+              "display": "12",
+              "pitch": null,
+              "status": "normal",
+              "leftHandFinger": null,
+              "rightHandFinger": null,
+              "effects": [],
+              "confidence": 1
+            }
+          ],
+          "articulations": []
+        },
+        {
+          "id": "m7e8",
+          "type": "note",
+          "tick": 1920,
+          "duration": {
+            "base": 2,
+            "dots": 0
+          },
+          "voice": 1,
+          "beamGroup": null,
+          "notes": [
+            {
+              "id": "m7n8_1",
+              "string": 3,
+              "fret": 12,
+              "display": "12",
+              "pitch": null,
+              "status": "ring",
+              "leftHandFinger": null,
+              "rightHandFinger": null,
+              "effects": [],
+              "confidence": 1
+            }
+          ],
+          "articulations": []
+        }
+      ],
+      "spanners": [
+        {
+          "id": "m7sp1",
+          "type": "tie",
+          "from": "m7n3_1",
+          "to": "m7n4_1",
+          "placement": "below"
+        },
+        {
+          "id": "m7sp2",
+          "type": "hammer-on",
+          "from": "m7n5_1",
+          "to": "m7n6_1",
+          "label": "H"
+        },
+        {
+          "id": "m7sp3",
+          "type": "pull-off",
+          "from": "m7n6_1",
+          "to": "m7n7_1",
+          "label": "P"
+        },
+        {
+          "id": "m7sp4",
+          "type": "vibrato",
+          "from": "m7n8_1",
+          "width": "normal"
+        }
+      ],
+      "directions": [],
+      "source": {
+        "sourceId": "manual-editor",
+        "page": null,
+        "frame": null,
+        "bbox": null,
+        "rawText": "empty measure inserted in editor",
+        "confidence": 1
+      },
+      "_showTimeSig": false
+    },
+    {
+      "id": "m8",
+      "number": 8,
+      "trackId": "gtr1",
+      "startTick": 26880,
+      "durationTicks": 3840,
+      "barline": {
+        "left": "single",
+        "right": "single",
+        "repeatStart": false,
+        "repeatEnd": false,
+        "repeatCount": null,
+        "ending": null
+      },
+      "events": [
+        {
+          "id": "m8e1",
+          "type": "rest",
+          "tick": 0,
+          "duration": {
+            "base": 8,
+            "dots": 0
+          },
+          "voice": 1
+        },
+        {
+          "id": "m8e2",
+          "type": "note",
+          "tick": 480,
+          "duration": {
+            "base": 16,
+            "dots": 0
+          },
+          "voice": 1,
+          "beamGroup": "m8b1",
+          "notes": [
+            {
+              "id": "m8n2_1",
+              "string": 1,
+              "fret": 19,
+              "display": "19",
+              "pitch": null,
+              "status": "normal",
+              "leftHandFinger": null,
+              "rightHandFinger": null,
+              "effects": [],
+              "confidence": 1
+            }
+          ],
+          "articulations": []
+        },
+        {
+          "id": "m8e3",
+          "type": "note",
+          "tick": 720,
+          "duration": {
+            "base": 16,
+            "dots": 0
+          },
+          "voice": 1,
+          "beamGroup": "m8b1",
+          "notes": [
+            {
+              "id": "m8n3_1",
+              "string": 1,
+              "fret": 19,
+              "display": "(19)",
+              "pitch": null,
+              "status": "tied",
+              "leftHandFinger": null,
+              "rightHandFinger": null,
+              "effects": [],
+              "confidence": 1
+            }
+          ],
+          "articulations": []
+        },
+        {
+          "id": "m8e4",
+          "type": "note",
+          "tick": 960,
+          "duration": {
+            "base": 16,
+            "dots": 0
+          },
+          "voice": 1,
+          "beamGroup": "m8b2",
+          "notes": [
+            {
+              "id": "m8n4_1",
+              "string": 1,
+              "fret": 19,
+              "display": "(19)",
+              "pitch": null,
+              "status": "tied",
+              "leftHandFinger": null,
+              "rightHandFinger": null,
+              "effects": [],
+              "confidence": 1
+            }
+          ],
+          "articulations": []
+        },
+        {
+          "id": "m8e5",
+          "type": "note",
+          "tick": 1200,
+          "duration": {
+            "base": 16,
+            "dots": 0
+          },
+          "voice": 1,
+          "beamGroup": "m8b2",
+          "notes": [
+            {
+              "id": "m8n5_1",
+              "string": 2,
+              "fret": 20,
+              "display": "20",
+              "pitch": null,
+              "status": "normal",
+              "leftHandFinger": null,
+              "rightHandFinger": null,
+              "effects": [],
+              "confidence": 1
+            }
+          ],
+          "articulations": []
+        },
+        {
+          "id": "m8e6",
+          "type": "note",
+          "tick": 1440,
+          "duration": {
+            "base": 16,
+            "dots": 0
+          },
+          "voice": 1,
+          "beamGroup": "m8b2",
+          "notes": [
+            {
+              "id": "m8n6_1",
+              "string": 3,
+              "fret": 19,
+              "display": "19",
+              "pitch": null,
+              "status": "normal",
+              "leftHandFinger": null,
+              "rightHandFinger": null,
+              "effects": [],
+              "confidence": 1
+            }
+          ],
+          "articulations": []
+        },
+        {
+          "id": "m8e7",
+          "type": "note",
+          "tick": 1680,
+          "duration": {
+            "base": 16,
+            "dots": 0
+          },
+          "voice": 1,
+          "beamGroup": "m8b2",
+          "notes": [
+            {
+              "id": "m8n7_1",
+              "string": 3,
+              "fret": 17,
+              "display": "17",
+              "pitch": null,
+              "status": "normal",
+              "leftHandFinger": null,
+              "rightHandFinger": null,
+              "effects": [],
+              "confidence": 1
+            }
+          ],
+          "articulations": []
+        },
+        {
+          "id": "m8e8",
+          "type": "note",
+          "tick": 1920,
+          "duration": {
+            "base": 16,
+            "dots": 0
+          },
+          "voice": 1,
+          "beamGroup": "m8b3",
+          "notes": [
+            {
+              "id": "m8n8_1",
+              "string": 3,
+              "fret": 16,
+              "display": "16",
+              "pitch": null,
+              "status": "normal",
+              "leftHandFinger": null,
+              "rightHandFinger": null,
+              "effects": [],
+              "confidence": 1
+            }
+          ],
+          "articulations": []
+        },
+        {
+          "id": "m8e9",
+          "type": "note",
+          "tick": 2160,
+          "duration": {
+            "base": 16,
+            "dots": 0
+          },
+          "voice": 1,
+          "beamGroup": "m8b3",
+          "notes": [
+            {
+              "id": "m8n9_1",
+              "string": 3,
+              "fret": 16,
+              "display": "(16)",
+              "pitch": null,
+              "status": "tied",
+              "leftHandFinger": null,
+              "rightHandFinger": null,
+              "effects": [],
+              "confidence": 1
+            }
+          ],
+          "articulations": []
+        },
+        {
+          "id": "m8e10",
+          "type": "note",
+          "tick": 2400,
+          "duration": {
+            "base": 16,
+            "dots": 0
+          },
+          "voice": 1,
+          "beamGroup": "m8b3",
+          "notes": [
+            {
+              "id": "m8n10_1",
+              "string": 3,
+              "fret": 16,
+              "display": "(16)",
+              "pitch": null,
+              "status": "tied",
+              "leftHandFinger": null,
+              "rightHandFinger": null,
+              "effects": [],
+              "confidence": 1
+            }
+          ],
+          "articulations": []
+        },
+        {
+          "id": "m8e11",
+          "type": "note",
+          "tick": 2640,
+          "duration": {
+            "base": 16,
+            "dots": 0
+          },
+          "voice": 1,
+          "beamGroup": "m8b3",
+          "notes": [
+            {
+              "id": "m8n11_1",
+              "string": 3,
+              "fret": 16,
+              "display": "(16)",
+              "pitch": null,
+              "status": "tied",
+              "leftHandFinger": null,
+              "rightHandFinger": null,
+              "effects": [],
+              "confidence": 1
+            }
+          ],
+          "articulations": []
+        },
+        {
+          "id": "m8e12",
+          "type": "note",
+          "tick": 2880,
+          "duration": {
+            "base": 4,
+            "dots": 0
+          },
+          "voice": 1,
+          "beamGroup": null,
+          "notes": [
+            {
+              "id": "m8n12_1",
+              "string": 4,
+              "fret": 17,
+              "display": "17",
+              "pitch": null,
+              "status": "normal",
+              "leftHandFinger": null,
+              "rightHandFinger": null,
+              "effects": [],
+              "confidence": 1
+            }
+          ],
+          "articulations": []
+        }
+      ],
+      "spanners": [
+        {
+          "id": "m8sp1",
+          "type": "tie",
+          "from": "m8n2_1",
+          "to": "m8n3_1",
+          "placement": "below"
+        },
+        {
+          "id": "m8sp2",
+          "type": "tie",
+          "from": "m8n3_1",
+          "to": "m8n4_1",
+          "placement": "below"
+        },
+        {
+          "id": "m8sp3",
+          "type": "tie",
+          "from": "m8n8_1",
+          "to": "m8n9_1",
+          "placement": "below"
+        },
+        {
+          "id": "m8sp4",
+          "type": "tie",
+          "from": "m8n9_1",
+          "to": "m8n10_1",
+          "placement": "below"
+        },
+        {
+          "id": "m8sp5",
+          "type": "tie",
+          "from": "m8n10_1",
+          "to": "m8n11_1",
+          "placement": "below"
+        },
+        {
+          "id": "m8sp6",
+          "type": "bend",
+          "from": "m8n3_1",
+          "to": "m8n5_1",
+          "label": "1/2",
+          "curve": [
+            {
+              "at": 0,
+              "alter": 0
+            },
+            {
+              "at": 0.5,
+              "alter": 1
+            },
+            {
+              "at": 1,
+              "alter": 0
+            }
+          ]
+        },
+        {
+          "id": "m8sp7",
+          "type": "bend",
+          "from": "m8n9_1",
+          "to": "m8n11_1",
+          "label": "1/2",
+          "curve": [
+            {
+              "at": 0,
+              "alter": 0
+            },
+            {
+              "at": 0.5,
+              "alter": 1
+            },
+            {
+              "at": 1,
+              "alter": 0
+            }
+          ]
+        },
+        {
+          "id": "m8sp8",
+          "type": "bend",
+          "from": "m8n11_1",
+          "to": "m8n12_1",
+          "label": "1/2",
+          "curve": [
+            {
+              "at": 0,
+              "alter": 0
+            },
+            {
+              "at": 0.5,
+              "alter": 1
+            },
+            {
+              "at": 1,
+              "alter": 0
+            }
+          ]
+        },
+        {
+          "id": "m8sp9",
+          "type": "vibrato",
+          "from": "m8n12_1",
+          "width": "normal"
+        }
+      ],
+      "directions": [],
+      "source": {
+        "sourceId": "manual-editor",
+        "page": null,
+        "frame": null,
+        "bbox": null,
+        "rawText": "empty measure inserted in editor",
+        "confidence": 1
+      },
+      "_showTimeSig": false
+    },
+    {
+      "id": "m9",
+      "number": 9,
+      "trackId": "gtr1",
+      "startTick": 30720,
+      "durationTicks": 3840,
+      "barline": {
+        "left": "single",
+        "right": "single",
+        "repeatStart": false,
+        "repeatEnd": false,
+        "repeatCount": null,
+        "ending": null
+      },
+      "events": [
+        {
+          "id": "m9e1",
+          "type": "note",
+          "tick": 0,
+          "duration": {
+            "base": 16,
+            "dots": 0
+          },
+          "voice": 1,
+          "beamGroup": "m9b1",
+          "notes": [
+            {
+              "id": "m9n1_1",
+              "string": 4,
+              "fret": 19,
+              "display": "19",
+              "pitch": null,
+              "status": "normal",
+              "leftHandFinger": null,
+              "rightHandFinger": null,
+              "effects": [],
+              "confidence": 1
+            }
+          ],
+          "articulations": []
+        },
+        {
+          "id": "m9e2",
+          "type": "note",
+          "tick": 240,
+          "duration": {
+            "base": 16,
+            "dots": 0
+          },
+          "voice": 1,
+          "beamGroup": "m9b1",
+          "notes": [
+            {
+              "id": "m9n2_1",
+              "string": 3,
+              "fret": 17,
+              "display": "17",
+              "pitch": null,
+              "status": "normal",
+              "leftHandFinger": null,
+              "rightHandFinger": null,
+              "effects": [],
+              "confidence": 1
+            }
+          ],
+          "articulations": []
+        },
+        {
+          "id": "m9e3",
+          "type": "note",
+          "tick": 480,
+          "duration": {
+            "base": 8,
+            "dots": 0
+          },
+          "voice": 1,
+          "beamGroup": "m9b1",
+          "notes": [
+            {
+              "id": "m9n3_1",
+              "string": 3,
+              "fret": 19,
+              "display": "19",
+              "pitch": null,
+              "status": "normal",
+              "leftHandFinger": null,
+              "rightHandFinger": null,
+              "effects": [],
+              "confidence": 1
+            }
+          ],
+          "articulations": []
+        },
+        {
+          "id": "m9e4",
+          "type": "note",
+          "tick": 960,
+          "duration": {
+            "base": 16,
+            "dots": 0
+          },
+          "voice": 1,
+          "beamGroup": "m9b2",
+          "notes": [
+            {
+              "id": "m9n4_1",
+              "string": 3,
+              "fret": 19,
+              "display": "19",
+              "pitch": null,
+              "status": "normal",
+              "leftHandFinger": null,
+              "rightHandFinger": null,
+              "effects": [],
+              "confidence": 1
+            }
+          ],
+          "articulations": []
+        },
+        {
+          "id": "m9e5",
+          "type": "note",
+          "tick": 1200,
+          "duration": {
+            "base": 16,
+            "dots": 0
+          },
+          "voice": 1,
+          "beamGroup": "m9b2",
+          "notes": [
+            {
+              "id": "m9n5_1",
+              "string": 3,
+              "fret": 17,
+              "display": "17",
+              "pitch": null,
+              "status": "normal",
+              "leftHandFinger": null,
+              "rightHandFinger": null,
+              "effects": [],
+              "confidence": 1
+            }
+          ],
+          "articulations": []
+        },
+        {
+          "id": "m9e6",
+          "type": "note",
+          "tick": 1440,
+          "duration": {
+            "base": 16,
+            "dots": 0
+          },
+          "voice": 1,
+          "beamGroup": "m9b2",
+          "notes": [
+            {
+              "id": "m9n6_1",
+              "string": 2,
+              "fret": 16,
+              "display": "16",
+              "pitch": null,
+              "status": "normal",
+              "leftHandFinger": null,
+              "rightHandFinger": null,
+              "effects": [],
+              "confidence": 1
+            }
+          ],
+          "articulations": []
+        },
+        {
+          "id": "m9e7",
+          "type": "note",
+          "tick": 1680,
+          "duration": {
+            "base": 16,
+            "dots": 0
+          },
+          "voice": 1,
+          "beamGroup": "m9b2",
+          "notes": [
+            {
+              "id": "m9n7_1",
+              "string": 2,
+              "fret": 17,
+              "display": "17",
+              "pitch": null,
+              "status": "normal",
+              "leftHandFinger": null,
+              "rightHandFinger": null,
+              "effects": [],
+              "confidence": 1
+            }
+          ],
+          "articulations": []
+        },
+        {
+          "id": "m9e8",
+          "type": "note",
+          "tick": 1920,
+          "duration": {
+            "base": 2,
+            "dots": 0
+          },
+          "voice": 1,
+          "beamGroup": null,
+          "notes": [
+            {
+              "id": "m9n8_1",
+              "string": 1,
+              "fret": 20,
+              "display": "20",
+              "pitch": null,
+              "status": "ring",
+              "leftHandFinger": null,
+              "rightHandFinger": null,
+              "effects": [],
+              "confidence": 1
+            }
+          ],
+          "articulations": []
+        }
+      ],
+      "spanners": [
+        {
+          "id": "m9sp1",
+          "type": "slide",
+          "to": "m9n1_1",
+          "direction": "up",
+          "slideKind": "slide-in"
+        },
+        {
+          "id": "m9sp2",
+          "type": "slide",
+          "from": "m9n6_1",
+          "to": "m9n7_1",
+          "slideKind": "shift",
+          "label": "sl."
+        },
+        {
+          "id": "m9sp3",
+          "type": "bend",
+          "from": "m9n3_1",
+          "label": "1/2",
+          "curve": [
+            {
+              "at": 0,
+              "alter": 0
+            },
+            {
+              "at": 0.7,
+              "alter": 1
+            },
+            {
+              "at": 1,
+              "alter": 1
+            }
+          ]
+        },
+        {
+          "id": "m9sp4",
+          "type": "bend",
+          "from": "m9n4_1",
+          "to": "m9n5_1",
+          "label": "1/2",
+          "curve": [
+            {
+              "at": 0,
+              "alter": 0
+            },
+            {
+              "at": 0.5,
+              "alter": 1
+            },
+            {
+              "at": 1,
+              "alter": 0
+            }
+          ]
+        },
+        {
+          "id": "m9sp5",
+          "type": "vibrato",
+          "from": "m9n8_1",
+          "width": "normal"
+        }
+      ],
+      "directions": [],
+      "source": {
+        "sourceId": "manual-editor",
+        "page": null,
+        "frame": null,
+        "bbox": null,
+        "rawText": "empty measure inserted in editor",
+        "confidence": 1
+      },
+      "_showTimeSig": true
+    }
+  ],
+  "source": {
+    "video": "data/raw/老男孩_douyin.mp4",
+    "motionMode": "fixed_score_moving_playhead",
+    "transcriptionStatus": "source-draft-needs-review"
+  }
+}
