@@ -1,0 +1,49 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# Android
+local.properties
+*.apk
+*.aab
+*.dex
+*.class
+bin/
+gen/
+out/
+.navigation/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Python virtual env
+.venv/
+__pycache__/
+*.pyc
+
+# RokidMusic — raw source media & processing artifacts (keep only .tab.json scores)
+RokidMusic/data/raw/
+RokidMusic/data/tmp/
+
+# Claude local settings
+.claude/settings.local.json
+
+# Samples (not our code)
+samples/
+
+# Not yet implemented
+RokidTerm/
+
+# Logs
+*.log
+
+# OS
+Thumbs.db

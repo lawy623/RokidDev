@@ -1,0 +1,90 @@
+# v0.14.0
+
+## Layout and Styling
+- **Text and Flex Layout Improvements**: Expanded layout support with full `line-height` handling for both `px` values and unitless numbers, and added support for the `flex` property.
+- **Background and Clipping Enhancements**: Added support for CSS `background` images and gradients, along with `clip-path`, `mask-image`, and `mask-mode`.
+
+## Tooling and Runtime
+- **TypeScript Workflow Support**: Improved TypeScript support across single-file components, pages, and module-based projects.
+- **Locale and Region Awareness**: `navigator` now exposes `region` (Overseas or Mainland China) and `language` for runtime localization and regional adaptation.
+- **Frame Scheduling Support**: Added `requestAnimationFrame` to take advantage of the highest available frame rate on the device.
+
+## Media and Performance
+- **Controllable Photo Preview**: `takePhoto` now allows disabling the system preview with `enableSystemPreview=false`.
+- **Rendering and Audio Optimizations**: Improved performance for `canvas drawImage` and `Sound` playback to reduce overhead in graphics and audio scenarios.
+
+## Stability Fixes
+- **Storage Persistence Fix**: Fixed the issue where `localStorage` could still be used after a package version update.
+
+# v0.1.1
+
+## Runtime APIs
+- **Device Serial Number**: Added `navigator.getDeviceSerialNumber()` to obtain the device SN.
+- **Device Identification Info**: Added `navigator.userAgent` to return device and version information.
+- **Streaming Audio Playback**: `AudioPlayer` now supports Opus streaming playback, allowing Ogg-container Opus audio streams to be appended by explicitly declaring `format: 'ogg_opus'`.
+
+## UI Rendering
+- **Fixed Positioning**: CSS now supports `position: fixed` for floating and fixed-layout scenarios.
+
+## Components and Charts
+- **scroll-view**: Fixed component rendering issues and improved display stability for scroll containers.
+- **chart**: Fixed several issues in chart components and improved rendering and usability.
+
+# v0.1.0
+
+## Cross-Platform Runtime
+- **Multi-Platform Support**: Supports loading and running across Android / iOS / macOS / Web environments, ensuring cross-platform consistency.
+
+## AI Capabilities
+- **Voice Interaction**: Supports ASR speech recognition and TTS voice playback.
+- **Intelligent Conversation**: Supports LLM model invocation with contextual memory for multi-turn conversations.
+
+## Device and Perception
+- **Device Capabilities**: Supports Bluetooth connectivity and Barcode scanning.
+- **IMU Perception**: Supports real-time data collection from accelerometers and gyroscopes, as well as posture change sensing.
+
+## Business Components
+- **calendar, card**: Added calendar and card business components to enhance scenario presentation capabilities.
+
+## UI Rendering
+- **Custom Fonts**: Supports importing and applying custom fonts through CSS for more personalized UI presentation.
+
+## Multimedia Capabilities
+- **Sound**: Designed specifically for sound effect playback with low-latency audio feedback.
+
+## Scene Interaction
+- **Navigation Mechanism**: Supports entry and switching logic for card-style pages.
+- **Exit Mechanism**: Supports system-level interactions such as double-click exit and out-of-bounds exit.
+- **Resource Loading**: Supports importing static resources such as images and audio (`Sound`) via ESM, ensuring correct path resolution.
+
+# v0.0.0 (Internal Beta)
+
+## Core Framework
+- **Lifecycle Management**: Fully covers the lifecycle from initialization and rendering to destruction.
+- **Application Model**: Supports App / Page-level loading and page navigation mechanisms.
+- **Module Registration**: Fully supports ES Module and `export default` registration mechanisms.
+- **.ink Components**: Supports running single-file components (SFC) with a complete component lifecycle.
+
+## UI Rendering and Layout
+- **Rendering Performance**: Provides high-performance rendering based on Skia.
+- **Layout Capabilities**: Integrates the Taffy layout engine and provides comprehensive Flexbox layout support.
+- **Style Animations**: Supports Transform, basic style properties, and animation effects.
+
+## Component Library
+- **Basic Components**: Provides basic rendering components such as view, text, and button.
+- **Graphic Components**: Supports image, canvas, and simple chart components (including line charts and area charts).
+    - *Known issue: PNG image animations are not yet effective on the Glasses side.*
+
+## Runtime APIs
+- **Network Communication**: Supports fetch, WebSocket, and SSE (Server-Sent Events).
+- **Data Storage**: Supports localStorage and `wx.storage` storage APIs.
+- **Multimedia Capabilities**: Integrates permission management and invocation for Recorder recording and Camera features.
+
+## Development Tools and Engineering
+- **.aix Packaging**: Supports project packaging, building, distribution, and loading.
+- **Debugging and Editing**: Provides full-chain development tools including online debugging, code editing, and build export.
+
+## Version Notes
+- Initial internal beta release of AIUI.
+- Established the foundational framework architecture and component specifications.
+- Completed the initial integration of core runtime APIs.

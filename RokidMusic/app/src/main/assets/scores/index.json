@@ -1,0 +1,12 @@
+[
+  {
+    "title": "花海",
+    "artist": "周杰伦",
+    "url": "scores/huahai_douyin.tab.json"
+  },
+  {
+    "title": "天下",
+    "artist": "张杰",
+    "url": "scores/tianxia_douyin.tab.json"
+  }
+]

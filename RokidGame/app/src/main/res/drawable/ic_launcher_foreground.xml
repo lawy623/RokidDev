@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Wing (flap up position) -->
+    <path
+        android:pathData="M48.3,50.6 L43.2,25.1 L55.1,59.1 Z"
+        android:fillColor="#00FF44" />
+
+    <!-- Body -->
+    <path
+        android:pathData="M50,37 A17,17 0 1,1 50,71 A17,17 0 1,1 50,37 Z"
+        android:fillColor="#00FF44" />
+
+    <!-- Beak -->
+    <path
+        android:pathData="M62,54 L75.5,52.3 L62,56.6 Z"
+        android:fillColor="#00FF44" />
+
+    <!-- Eye (black with green pupil) -->
+    <path
+        android:pathData="M55,48 A4.3,4.3 0 1,1 55,56.6 A4.3,4.3 0 1,1 55,48 Z"
+        android:fillColor="#000000" />
+
+    <!-- Pupil (green glint) -->
+    <path
+        android:pathData="M55.8,48.3 A1.5,1.5 0 1,1 55.8,51.3 A1.5,1.5 0 1,1 55.8,48.3 Z"
+        android:fillColor="#00FF44" />
+</vector>

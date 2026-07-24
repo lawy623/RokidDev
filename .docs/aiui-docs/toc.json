@@ -1,0 +1,758 @@
+[
+  {
+    "id": "0-guide",
+    "label": "指南",
+    "children": [
+      {
+        "id": "quickstart",
+        "label": "快速开始",
+        "expanded": true,
+        "children": [
+          {
+            "id": "intro",
+            "label": "介绍"
+          },
+          {
+            "id": "first-chat",
+            "label": "第一个对话式 AIUI"
+          },
+          {
+            "id": "first-immersive",
+            "label": "第一个沉浸式 AIUI"
+          },
+          {
+            "id": "ai-dev",
+            "label": "使用 AI 开发"
+          }
+        ],
+        "hasIndex": true
+      },
+      {
+        "id": "open-agent-format",
+        "label": "Open Agent Format",
+        "children": [],
+        "hasIndex": true
+      },
+      {
+        "id": "structure",
+        "label": "目录结构",
+        "children": []
+      },
+      {
+        "id": "framework",
+        "label": "智能体框架",
+        "expanded": false,
+        "children": [
+          {
+            "id": "intro",
+            "label": "介绍"
+          },
+          {
+            "id": "category",
+            "label": "分类"
+          },
+          {
+            "id": "logic",
+            "label": "逻辑开发"
+          },
+          {
+            "id": "ui",
+            "label": "用户界面（UI）开发"
+          }
+        ],
+        "hasIndex": true
+      },
+      {
+        "id": "runtime",
+        "label": "智能体运行时",
+        "expanded": false,
+        "children": [
+          {
+            "id": "env",
+            "label": "运行环境"
+          },
+          {
+            "id": "js",
+            "label": "JavaScript 兼容性"
+          },
+          {
+            "id": "mechanism",
+            "label": "运行机制"
+          }
+        ],
+        "hasIndex": true
+      },
+      {
+        "id": "custom-components",
+        "label": "自定义组件",
+        "status": "unsupported",
+        "children": []
+      },
+      {
+        "id": "basic",
+        "label": "基础能力",
+        "expanded": false,
+        "children": [
+          {
+            "id": "network",
+            "label": "网络",
+            "children": [
+              {
+                "id": "usage",
+                "label": "使用说明"
+              },
+              {
+                "id": "lan",
+                "label": "局域网通信",
+                "status": "unsupported"
+              }
+            ]
+          },
+          {
+            "id": "storage",
+            "label": "存储"
+          },
+          {
+            "id": "module",
+            "label": "模块化"
+          },
+          {
+            "id": "device",
+            "label": "设备",
+            "docId": "basic-device",
+            "children": [
+              {
+                "id": "bluetooth",
+                "label": "蓝牙"
+              },
+              {
+                "id": "imu",
+                "label": "IMU"
+              }
+            ]
+          },
+          {
+            "id": "ai",
+            "label": "AI 能力",
+            "docId": "basic-ai",
+            "children": [
+              {
+                "id": "asr",
+                "label": "语音识别"
+              },
+              {
+                "id": "tts",
+                "label": "语音播报"
+              },
+              {
+                "id": "llm",
+                "label": "大语言模型"
+              }
+            ]
+          },
+          {
+            "id": "canvas",
+            "label": "画布"
+          },
+          {
+            "id": "prefetch",
+            "label": "数据预拉取",
+            "status": "unsupported"
+          }
+        ],
+        "hasIndex": true
+      },
+      {
+        "id": "debug",
+        "label": "调试",
+        "expanded": false,
+        "children": [
+          {
+            "id": "intro",
+            "label": "介绍"
+          },
+          {
+            "id": "sourcemap",
+            "label": "Source map",
+            "status": "unsupported"
+          }
+        ],
+        "hasIndex": true
+      },
+      {
+        "id": "bundle",
+        "label": "打包与分发",
+        "expanded": false,
+        "children": [
+          {
+            "id": "aix",
+            "label": "什么是 AIX"
+          },
+          {
+            "id": "cli",
+            "label": "命令行工具"
+          },
+          {
+            "id": "publish",
+            "label": "发布到智能体商店"
+          }
+        ],
+        "hasIndex": true
+      },
+      {
+        "id": "performance",
+        "label": "性能与体验",
+        "expanded": false,
+        "children": [
+          {
+            "id": "startup",
+            "label": "启动性能"
+          },
+          {
+            "id": "runtime",
+            "label": "运行时性能"
+          },
+          {
+            "id": "data",
+            "label": "性能数据"
+          },
+          {
+            "id": "tool",
+            "label": "性能诊断工具"
+          },
+          {
+            "id": "network",
+            "label": "弱网体验"
+          }
+        ],
+        "hasIndex": true
+      }
+    ],
+    "slug": "guide"
+  },
+  {
+    "id": "1-framework",
+    "label": "框架",
+    "children": [
+      {
+        "id": "open-agent-format",
+        "label": "Open Agent Format",
+        "expanded": true,
+        "children": [
+          {
+            "id": "agents",
+            "label": "AGENTS.md",
+            "docId": "config-agents"
+          },
+          {
+            "id": "app-json",
+            "label": "app.json",
+            "docId": "open-agent-format-app-json"
+          },
+          {
+            "id": "page",
+            "label": "页面",
+            "expanded": true,
+            "children": [
+              {
+                "id": "overview",
+                "label": "概览",
+                "docId": "open-agent-format-page"
+              },
+              {
+                "id": "definition",
+                "label": "定义",
+                "docId": "open-agent-format-page-definition"
+              },
+              {
+                "id": "lifecycle",
+                "label": "生命周期",
+                "docId": "open-agent-format-page-lifecycle"
+              },
+              {
+                "id": "events",
+                "label": "事件",
+                "docId": "open-agent-format-page-events"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "wxml",
+        "label": "WXML 参考",
+        "expanded": false,
+        "children": [
+          {
+            "id": "intro",
+            "label": "介绍"
+          },
+          {
+            "id": "data-binding",
+            "label": "数据绑定"
+          },
+          {
+            "id": "conditional-rendering",
+            "label": "条件渲染"
+          },
+          {
+            "id": "list-rendering",
+            "label": "列表渲染"
+          },
+          {
+            "id": "template",
+            "label": "模版",
+            "status": "unsupported"
+          }
+        ],
+        "hasIndex": true
+      },
+      {
+        "id": "wxss",
+        "label": "WXSS 参考",
+        "expanded": false,
+        "children": [
+          {
+            "id": "intro",
+            "label": "介绍"
+          },
+          {
+            "id": "selector",
+            "label": "选择器"
+          },
+          {
+            "id": "pseudo-class",
+            "label": "伪类",
+            "status": "partial"
+          },
+          {
+            "id": "pseudo-element",
+            "label": "伪元素",
+            "status": "unsupported"
+          },
+          {
+            "id": "property",
+            "label": "属性"
+          },
+          {
+            "id": "value-type",
+            "label": "值类型"
+          },
+          {
+            "id": "function",
+            "label": "函数"
+          },
+          {
+            "id": "at-rule",
+            "label": "@规则",
+            "status": "partial"
+          }
+        ],
+        "hasIndex": true
+      }
+    ],
+    "slug": "framework"
+  },
+  {
+    "id": "2-components",
+    "label": "组件",
+    "children": [
+      {
+        "id": "view-containers",
+        "label": "视图容器",
+        "expanded": true,
+        "children": [
+          {
+            "id": "view",
+            "label": "view",
+            "docId": "view"
+          },
+          {
+            "id": "scroll-view",
+            "label": "scroll-view",
+            "docId": "scroll-view"
+          }
+        ]
+      },
+      {
+        "id": "basic-content",
+        "label": "基础内容",
+        "expanded": true,
+        "children": [
+          {
+            "id": "text",
+            "label": "text",
+            "docId": "text"
+          },
+          {
+            "id": "icon",
+            "label": "icon",
+            "docId": "icon",
+            "status": "unsupported"
+          },
+          {
+            "id": "error-state",
+            "label": "error-state",
+            "docId": "error-state"
+          },
+          {
+            "id": "streamdown",
+            "label": "streamdown",
+            "docId": "streamdown",
+            "status": "unsupported"
+          }
+        ]
+      },
+      {
+        "id": "form-components",
+        "label": "表单组件",
+        "expanded": true,
+        "children": [
+          {
+            "id": "button",
+            "label": "button",
+            "docId": "button"
+          }
+        ]
+      },
+      {
+        "id": "date-components",
+        "label": "日期组件",
+        "expanded": true,
+        "children": [
+          {
+            "id": "calendar",
+            "label": "calendar",
+            "docId": "calendar"
+          }
+        ]
+      },
+      {
+        "id": "media-components",
+        "label": "媒体组件",
+        "expanded": true,
+        "children": [
+          {
+            "id": "image",
+            "label": "image",
+            "docId": "image"
+          },
+          {
+            "id": "lottie-view",
+            "label": "lottie-view",
+            "docId": "lottie-view"
+          }
+        ]
+      },
+      {
+        "id": "canvas-chart",
+        "label": "画布与图表",
+        "expanded": true,
+        "children": [
+          {
+            "id": "canvas",
+            "label": "canvas",
+            "docId": "canvas"
+          },
+          {
+            "id": "chart",
+            "label": "chart",
+            "docId": "chart"
+          }
+        ]
+      },
+      {
+        "id": "ai-components",
+        "label": "AI 组件",
+        "expanded": true,
+        "children": [
+          {
+            "id": "a2ui",
+            "label": "a2ui",
+            "docId": "a2ui"
+          }
+        ]
+      }
+    ],
+    "slug": "components"
+  },
+  {
+    "id": "3-api",
+    "label": "API",
+    "children": [
+      {
+        "id": "basic",
+        "label": "基础",
+        "children": []
+      },
+      {
+        "id": "framework",
+        "label": "框架",
+        "expanded": true,
+        "children": [
+          {
+            "id": "app",
+            "label": "App",
+            "docId": "framework-app"
+          },
+          {
+            "id": "page",
+            "label": "Page",
+            "docId": "framework-page"
+          },
+          {
+            "id": "global",
+            "label": "全局",
+            "docId": "framework-global"
+          }
+        ]
+      },
+      {
+        "id": "route",
+        "label": "路由",
+        "children": []
+      },
+      {
+        "id": "navigator",
+        "label": "Navigator",
+        "docId": "weixin-compatible-apis-navigator",
+        "children": []
+      },
+      {
+        "id": "media",
+        "label": "多媒体",
+        "expanded": false,
+        "children": [
+          {
+            "id": "sound",
+            "label": "音效"
+          },
+          {
+            "id": "audio-player",
+            "label": "音频播放器"
+          },
+          {
+            "id": "camera",
+            "label": "相机",
+            "docId": "media-camera"
+          },
+          {
+            "id": "recorder",
+            "label": "录音",
+            "docId": "media-recorder"
+          }
+        ]
+      },
+      {
+        "id": "network",
+        "label": "网络",
+        "expanded": false,
+        "children": [
+          {
+            "id": "https-sse",
+            "label": "HTTPS / SSE"
+          },
+          {
+            "id": "websocket",
+            "label": "WebSocket"
+          },
+          {
+            "id": "url",
+            "label": "URL",
+            "docId": "network-url"
+          }
+        ]
+      },
+      {
+        "id": "device",
+        "label": "设备",
+        "expanded": false,
+        "children": [
+          {
+            "id": "bluetooth",
+            "label": "蓝牙"
+          },
+          {
+            "id": "barcode",
+            "label": "条码",
+            "docId": "device-barcode"
+          },
+          {
+            "id": "absolute-orientation-sensor",
+            "label": "绝对方向传感器"
+          },
+          {
+            "id": "accelerometer",
+            "label": "加速度计"
+          },
+          {
+            "id": "gyroscope",
+            "label": "陀螺仪"
+          }
+        ]
+      },
+      {
+        "id": "ai",
+        "label": "AI",
+        "expanded": false,
+        "children": [
+          {
+            "id": "speech-recognition",
+            "label": "语音识别"
+          },
+          {
+            "id": "speech-synthesis",
+            "label": "语音播报"
+          },
+          {
+            "id": "language-model",
+            "label": "大语言模型"
+          }
+        ]
+      },
+      {
+        "id": "storage",
+        "label": "数据存储",
+        "expanded": false,
+        "children": [
+          {
+            "id": "storage-api",
+            "label": "localStorage",
+            "docId": "storage-api"
+          }
+        ]
+      },
+      {
+        "id": "canvas",
+        "label": "画布",
+        "children": [],
+        "hasIndex": true
+      },
+      {
+        "id": "encoding",
+        "label": "编码",
+        "children": []
+      },
+      {
+        "id": "crypto",
+        "label": "加密",
+        "children": []
+      },
+      {
+        "id": "console",
+        "label": "控制台",
+        "children": []
+      },
+      {
+        "id": "performance",
+        "label": "性能",
+        "children": []
+      },
+      {
+        "id": "open-services",
+        "label": "开放服务",
+        "children": []
+      },
+      {
+        "id": "web-apis",
+        "label": "Web API",
+        "children": []
+      },
+      {
+        "id": "weixin-compatible-apis",
+        "label": "微信小程序兼容 API",
+        "expanded": false,
+        "children": [
+          {
+            "id": "base",
+            "label": "基础"
+          },
+          {
+            "id": "canvas",
+            "label": "画布"
+          },
+          {
+            "id": "media",
+            "label": "多媒体"
+          },
+          {
+            "id": "networking",
+            "label": "网络请求"
+          },
+          {
+            "id": "router",
+            "label": "路由"
+          },
+          {
+            "id": "speech",
+            "label": "语音"
+          },
+          {
+            "id": "storage",
+            "label": "存储"
+          },
+          {
+            "id": "system",
+            "label": "系统"
+          },
+          {
+            "id": "ui",
+            "label": "界面"
+          }
+        ]
+      }
+    ],
+    "slug": "api"
+  },
+  {
+    "id": "4-design",
+    "label": "设计",
+    "children": [
+      {
+        "id": "visual",
+        "label": "视觉设计",
+        "children": []
+      },
+      {
+        "id": "interaction",
+        "label": "交互设计",
+        "children": []
+      }
+    ],
+    "slug": "design"
+  },
+  {
+    "id": "5-tools",
+    "label": "工具",
+    "children": [
+      {
+        "id": "intro",
+        "label": "介绍",
+        "children": []
+      },
+      {
+        "id": "craft",
+        "label": "Craft 平台",
+        "children": []
+      },
+      {
+        "id": "debug",
+        "label": "真机调试",
+        "children": []
+      }
+    ],
+    "slug": "tools"
+  },
+  {
+    "id": "6-changelog",
+    "label": "更新日志",
+    "children": [
+      {
+        "id": "latest",
+        "label": "最新版本",
+        "children": []
+      }
+    ],
+    "slug": "changelog"
+  }
+]

@@ -1,0 +1,469 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://rokid.local/schemas/rokid.music.tab-score.v1.json",
+  "title": "RokidMusic Electric Guitar Tab Score",
+  "type": "object",
+  "required": ["schema", "schemaVersion", "metadata", "defaults", "tracks", "measures"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": "rokid.music.tab-score" },
+    "schemaVersion": { "const": 1 },
+    "metadata": { "$ref": "#/definitions/metadata" },
+    "defaults": { "$ref": "#/definitions/defaults" },
+    "tracks": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/definitions/track" }
+    },
+    "systems": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/system" },
+      "default": []
+    },
+    "measures": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/definitions/measure" }
+    }
+  },
+  "definitions": {
+    "metadata": {
+      "type": "object",
+      "required": ["title", "artist"],
+      "additionalProperties": false,
+      "properties": {
+        "title": { "type": "string" },
+        "artist": { "type": "string" }
+      }
+    },
+    "defaults": {
+      "type": "object",
+      "required": ["ppq", "tempo", "timeSignature", "tuning"],
+      "additionalProperties": false,
+      "properties": {
+        "ppq": { "type": "integer", "minimum": 1 },
+        "tempo": { "$ref": "#/definitions/tempo" },
+        "timeSignature": { "$ref": "#/definitions/timeSignature" },
+        "keySignature": { "$ref": "#/definitions/keySignature" },
+        "tuning": { "$ref": "#/definitions/tuning" },
+        "notation": { "$ref": "#/definitions/notation" },
+        "extensions": { "type": "object" }
+      }
+    },
+    "tempo": {
+      "type": "object",
+      "required": ["bpm", "beatUnit"],
+      "additionalProperties": false,
+      "properties": {
+        "bpm": { "type": "number", "exclusiveMinimum": 0 },
+        "beatUnit": { "enum": [1, 2, 4, 8, 16, 32] },
+        "text": { "type": ["string", "null"] }
+      }
+    },
+    "timeSignature": {
+      "type": "object",
+      "required": ["beats", "beatType"],
+      "additionalProperties": false,
+      "properties": {
+        "beats": { "type": "integer", "minimum": 1 },
+        "beatType": { "enum": [1, 2, 4, 8, 16, 32] },
+        "symbol": { "enum": ["normal", "common", "cut", "single-number"] },
+        "visible": { "type": "boolean" }
+      }
+    },
+    "keySignature": {
+      "type": "object",
+      "required": ["fifths"],
+      "additionalProperties": false,
+      "properties": {
+        "fifths": { "type": "integer", "minimum": -7, "maximum": 7 },
+        "mode": { "type": ["string", "null"] },
+        "visible": { "type": "boolean" }
+      }
+    },
+    "tuning": {
+      "type": "object",
+      "required": ["strings"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": ["string", "null"] },
+        "capo": { "type": "integer", "minimum": 0, "default": 0 },
+        "strings": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["number", "pitch"],
+            "additionalProperties": false,
+            "properties": {
+              "number": { "type": "integer", "minimum": 1 },
+              "pitch": { "type": "string" },
+              "gauge": { "type": ["string", "null"] }
+            }
+          }
+        }
+      }
+    },
+    "notation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "staff": { "enum": ["tab", "standard", "standard+tab"] },
+        "showRhythm": { "type": "boolean" },
+        "showStringLabels": { "type": "boolean" },
+        "colorProfile": { "type": "string" }
+      }
+    },
+    "track": {
+      "type": "object",
+      "required": ["id", "name", "instrument", "stringCount"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "instrument": { "type": "string" },
+        "midiProgram": { "type": ["integer", "null"], "minimum": 0, "maximum": 127 },
+        "stringCount": { "type": "integer", "minimum": 1 },
+        "tuningRef": { "type": ["string", "null"] },
+        "visible": { "type": "boolean" },
+        "playback": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "muted": { "type": "boolean" },
+            "solo": { "type": "boolean" }
+          }
+        },
+        "extensions": { "type": "object" }
+      }
+    },
+    "system": {
+      "type": "object",
+      "required": ["id", "measureIds"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "source": { "$ref": "#/definitions/sourceMap" },
+        "measureIds": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "measure": {
+      "type": "object",
+      "required": ["id", "number", "trackId", "startTick", "durationTicks", "events"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "number": { "type": "integer", "minimum": 1 },
+        "trackId": { "type": "string" },
+        "startTick": { "type": "integer", "minimum": 0 },
+        "durationTicks": { "type": "integer", "minimum": 0 },
+        "attributes": { "$ref": "#/definitions/measureAttributes" },
+        "barline": { "$ref": "#/definitions/barline" },
+        "events": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/event" }
+        },
+        "spanners": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/spanner" },
+          "default": []
+        },
+        "directions": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/direction" },
+          "default": []
+        },
+        "source": { "$ref": "#/definitions/sourceMap" },
+        "extensions": { "type": "object" }
+      }
+    },
+    "measureAttributes": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "timeSignature": { "$ref": "#/definitions/timeSignature" },
+        "keySignature": { "$ref": "#/definitions/keySignature" },
+        "tempo": { "$ref": "#/definitions/tempo" },
+        "tuning": { "$ref": "#/definitions/tuning" },
+        "capo": { "type": "integer", "minimum": 0 },
+        "clef": { "enum": ["TAB", "G", "F", "C", "percussion", "none"] }
+      }
+    },
+    "barline": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "left": { "$ref": "#/definitions/barlineStyle" },
+        "right": { "$ref": "#/definitions/barlineStyle" },
+        "repeatStart": { "type": "boolean" },
+        "repeatEnd": { "type": "boolean" },
+        "repeatCount": { "type": ["integer", "null"], "minimum": 1 },
+        "ending": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "properties": {
+            "number": { "type": "string" },
+            "type": { "enum": ["start", "stop", "discontinue"] }
+          }
+        }
+      }
+    },
+    "barlineStyle": {
+      "enum": ["none", "single", "double", "final", "repeat-start", "repeat-end", "repeat-both", "dashed"]
+    },
+    "event": {
+      "oneOf": [
+        { "$ref": "#/definitions/noteEvent" },
+        { "$ref": "#/definitions/restEvent" },
+        { "$ref": "#/definitions/directionEvent" },
+        { "$ref": "#/definitions/unknownEvent" }
+      ]
+    },
+    "noteEvent": {
+      "type": "object",
+      "required": ["id", "type", "tick", "duration", "voice", "notes"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "const": "note" },
+        "tick": { "type": "integer", "minimum": 0 },
+        "durationTicks": { "type": "integer", "minimum": 0 },
+        "duration": { "$ref": "#/definitions/duration" },
+        "voice": { "type": "integer", "minimum": 1 },
+        "beamGroup": { "type": ["string", "null"] },
+        "notes": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/definitions/note" }
+        },
+        "articulations": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/effect" },
+          "default": []
+        },
+        "source": { "$ref": "#/definitions/sourceMap" },
+        "extensions": { "type": "object" }
+      }
+    },
+    "restEvent": {
+      "type": "object",
+      "required": ["id", "type", "tick", "duration", "voice"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "const": "rest" },
+        "tick": { "type": "integer", "minimum": 0 },
+        "durationTicks": { "type": "integer", "minimum": 0 },
+        "duration": { "$ref": "#/definitions/duration" },
+        "voice": { "type": "integer", "minimum": 1 },
+        "display": { "type": ["string", "null"] },
+        "source": { "$ref": "#/definitions/sourceMap" },
+        "extensions": { "type": "object" }
+      }
+    },
+    "directionEvent": {
+      "type": "object",
+      "required": ["id", "type", "tick", "text"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "const": "direction" },
+        "tick": { "type": "integer", "minimum": 0 },
+        "placement": { "$ref": "#/definitions/placement" },
+        "text": { "type": "string" },
+        "style": { "type": "string" },
+        "source": { "$ref": "#/definitions/sourceMap" },
+        "extensions": { "type": "object" }
+      }
+    },
+    "unknownEvent": {
+      "type": "object",
+      "required": ["id", "type", "tick", "rawText"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "const": "unknown" },
+        "tick": { "type": "integer", "minimum": 0 },
+        "rawText": { "type": "string" },
+        "source": { "$ref": "#/definitions/sourceMap" },
+        "extensions": { "type": "object" }
+      }
+    },
+    "duration": {
+      "type": "object",
+      "required": ["base"],
+      "additionalProperties": false,
+      "properties": {
+        "base": { "enum": [1, 2, 4, 8, 16, 32, 64, 128] },
+        "dots": { "type": "integer", "minimum": 0, "maximum": 3, "default": 0 },
+        "tuplet": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "actual": { "type": "integer", "minimum": 1 },
+            "normal": { "type": "integer", "minimum": 1 },
+            "bracket": { "type": "boolean" },
+            "number": { "type": "boolean" }
+          }
+        }
+      }
+    },
+    "note": {
+      "type": "object",
+      "required": ["id", "string", "fret"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "string": { "type": "integer", "minimum": 1 },
+        "fret": { "type": "integer", "minimum": 0 },
+        "display": { "type": ["string", "null"] },
+        "pitch": { "type": ["string", "null"] },
+        "status": { "enum": ["normal", "dead", "mute", "ghost", "ring", "tied", "cue", "unknown"] },
+        "leftHandFinger": { "type": ["string", "null"] },
+        "rightHandFinger": { "type": ["string", "null"] },
+        "effects": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/effect" },
+          "default": []
+        },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "source": { "$ref": "#/definitions/sourceMap" },
+        "extensions": { "type": "object" }
+      }
+    },
+    "effect": {
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": true,
+      "properties": {
+        "type": {
+          "enum": [
+            "open-string",
+            "dead",
+            "ghost",
+            "accent",
+            "marcato",
+            "staccato",
+            "tenuto",
+            "fermata",
+            "harmonic",
+            "pick",
+            "alternate-picking",
+            "sweep",
+            "rake",
+            "strum",
+            "pick-scrape",
+            "tap",
+            "mute",
+            "grace",
+            "mordent",
+            "turn",
+            "custom"
+          ]
+        }
+      }
+    },
+    "spanner": {
+      "type": "object",
+      "required": ["id", "type"],
+      "additionalProperties": true,
+      "properties": {
+        "id": { "type": "string" },
+        "type": {
+          "enum": [
+            "tie",
+            "slur",
+            "hammer-on",
+            "pull-off",
+            "slide",
+            "bend",
+            "vibrato",
+            "bend-vibrato",
+            "let-ring",
+            "palm-mute",
+            "trill",
+            "tremolo-picking",
+            "barre",
+            "ottava",
+            "whammy",
+            "custom"
+          ]
+        },
+        "from": { "type": "string" },
+        "to": { "type": "string" },
+        "fromEvent": { "type": "string" },
+        "toEvent": { "type": "string" },
+        "label": { "type": ["string", "null"] },
+        "placement": { "$ref": "#/definitions/placement" },
+        "line": { "enum": ["none", "solid", "dashed", "dotted", "wavy"] },
+        "direction": { "enum": ["up", "down", "none"] },
+        "slideKind": { "enum": ["shift", "legato", "slide-in", "slide-out", "pick-slide"] },
+        "curve": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["at", "alter"],
+            "additionalProperties": false,
+            "properties": {
+              "at": { "type": "number", "minimum": 0, "maximum": 1 },
+              "alter": { "type": "number" }
+            }
+          }
+        },
+        "preBend": { "type": "boolean" },
+        "withBar": { "type": "boolean" },
+        "width": { "enum": ["narrow", "normal", "wide"] },
+        "source": { "$ref": "#/definitions/sourceMap" }
+      }
+    },
+    "direction": {
+      "type": "object",
+      "required": ["id", "tick", "type", "text"],
+      "additionalProperties": true,
+      "properties": {
+        "id": { "type": "string" },
+        "tick": { "type": "integer", "minimum": 0 },
+        "type": {
+          "enum": [
+            "tempo",
+            "dynamic",
+            "section",
+            "rehearsal",
+            "chord-symbol",
+            "lyric",
+            "instruction",
+            "technique-text",
+            "navigation",
+            "custom"
+          ]
+        },
+        "text": { "type": "string" },
+        "placement": { "$ref": "#/definitions/placement" },
+        "source": { "$ref": "#/definitions/sourceMap" }
+      }
+    },
+    "sourceMap": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sourceId": { "type": "string" },
+        "page": { "type": ["integer", "null"], "minimum": 1 },
+        "frame": { "type": ["integer", "null"], "minimum": 0 },
+        "bbox": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": { "type": "number" }
+        },
+        "rawText": { "type": ["string", "null"] },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "placement": {
+      "enum": ["above", "below", "left", "right", "between", "unknown"]
+    }
+  }
+}

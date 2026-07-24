@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "skills": {
+    "aiui-dev": {
+      "source": "jsar-project/AIUI",
+      "ref": "main",
+      "sourceType": "github",
+      "skillPath": "skills/aiui-dev/SKILL.md",
+      "computedHash": "800d9d55fe908a1f086edb19b1c723d1c7cc9c8510d352a2fcaa4952d52bc990"
+    }
+  }
+}

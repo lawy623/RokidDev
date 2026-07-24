@@ -1,0 +1,758 @@
+[
+  {
+    "id": "0-guide",
+    "label": "Guide",
+    "children": [
+      {
+        "id": "quickstart",
+        "label": "Quick Start",
+        "expanded": true,
+        "children": [
+          {
+            "id": "intro",
+            "label": "Introduction"
+          },
+          {
+            "id": "first-chat",
+            "label": "AIUI in Chat"
+          },
+          {
+            "id": "first-immersive",
+            "label": "Your First Immersive AIUI"
+          },
+          {
+            "id": "ai-dev",
+            "label": "Build with AI"
+          }
+        ],
+        "hasIndex": true
+      },
+      {
+        "id": "open-agent-format",
+        "label": "Open Agent Format",
+        "children": [],
+        "hasIndex": true
+      },
+      {
+        "id": "structure",
+        "label": "Project Structure",
+        "children": []
+      },
+      {
+        "id": "framework",
+        "label": "Agent Framework",
+        "expanded": false,
+        "children": [
+          {
+            "id": "intro",
+            "label": "Introduction"
+          },
+          {
+            "id": "category",
+            "label": "Categories"
+          },
+          {
+            "id": "logic",
+            "label": "Logic Development"
+          },
+          {
+            "id": "ui",
+            "label": "User Interface (UI) Development"
+          }
+        ],
+        "hasIndex": true
+      },
+      {
+        "id": "runtime",
+        "label": "Agent Runtime",
+        "expanded": false,
+        "children": [
+          {
+            "id": "env",
+            "label": "Runtime Environment"
+          },
+          {
+            "id": "js",
+            "label": "JavaScript Compatibility"
+          },
+          {
+            "id": "mechanism",
+            "label": "Runtime Mechanism"
+          }
+        ],
+        "hasIndex": true
+      },
+      {
+        "id": "custom-components",
+        "label": "Custom Components",
+        "status": "unsupported",
+        "children": []
+      },
+      {
+        "id": "basic",
+        "label": "Core Capabilities",
+        "expanded": false,
+        "children": [
+          {
+            "id": "network",
+            "label": "Networking",
+            "children": [
+              {
+                "id": "usage",
+                "label": "Usage"
+              },
+              {
+                "id": "lan",
+                "label": "LAN",
+                "status": "unsupported"
+              }
+            ]
+          },
+          {
+            "id": "storage",
+            "label": "Storage"
+          },
+          {
+            "id": "module",
+            "label": "Modules"
+          },
+          {
+            "id": "device",
+            "label": "Device",
+            "docId": "basic-device",
+            "children": [
+              {
+                "id": "bluetooth",
+                "label": "Bluetooth"
+              },
+              {
+                "id": "imu",
+                "label": "IMU"
+              }
+            ]
+          },
+          {
+            "id": "ai",
+            "label": "AI Capabilities",
+            "docId": "basic-ai",
+            "children": [
+              {
+                "id": "asr",
+                "label": "Speech Recognition"
+              },
+              {
+                "id": "tts",
+                "label": "Speech Synthesis"
+              },
+              {
+                "id": "llm",
+                "label": "Large Language Model"
+              }
+            ]
+          },
+          {
+            "id": "canvas",
+            "label": "Canvas"
+          },
+          {
+            "id": "prefetch",
+            "label": "Data Prefetch",
+            "status": "unsupported"
+          }
+        ],
+        "hasIndex": true
+      },
+      {
+        "id": "debug",
+        "label": "Debugging",
+        "expanded": false,
+        "children": [
+          {
+            "id": "intro",
+            "label": "Introduction"
+          },
+          {
+            "id": "sourcemap",
+            "label": "Source Map",
+            "status": "unsupported"
+          }
+        ],
+        "hasIndex": true
+      },
+      {
+        "id": "bundle",
+        "label": "Packaging & Distribution",
+        "expanded": false,
+        "children": [
+          {
+            "id": "aix",
+            "label": "What Is AIX"
+          },
+          {
+            "id": "cli",
+            "label": "CLI"
+          },
+          {
+            "id": "publish",
+            "label": "Publish to the Agent Store"
+          }
+        ],
+        "hasIndex": true
+      },
+      {
+        "id": "performance",
+        "label": "Performance & Experience",
+        "expanded": false,
+        "children": [
+          {
+            "id": "startup",
+            "label": "Startup Performance"
+          },
+          {
+            "id": "runtime",
+            "label": "Runtime Performance"
+          },
+          {
+            "id": "data",
+            "label": "Performance Metrics"
+          },
+          {
+            "id": "tool",
+            "label": "Performance Diagnostics"
+          },
+          {
+            "id": "network",
+            "label": "Poor Network Experience"
+          }
+        ],
+        "hasIndex": true
+      }
+    ],
+    "slug": "guide"
+  },
+  {
+    "id": "1-framework",
+    "label": "Framework",
+    "children": [
+      {
+        "id": "open-agent-format",
+        "label": "Open Agent Format",
+        "expanded": true,
+        "children": [
+          {
+            "id": "agents",
+            "label": "AGENTS.md",
+            "docId": "config-agents"
+          },
+          {
+            "id": "app-json",
+            "label": "app.json",
+            "docId": "open-agent-format-app-json"
+          },
+          {
+            "id": "page",
+            "label": "Pages",
+            "expanded": true,
+            "children": [
+              {
+                "id": "overview",
+                "label": "Overview",
+                "docId": "open-agent-format-page"
+              },
+              {
+                "id": "definition",
+                "label": "Definition",
+                "docId": "open-agent-format-page-definition"
+              },
+              {
+                "id": "lifecycle",
+                "label": "Lifecycle",
+                "docId": "open-agent-format-page-lifecycle"
+              },
+              {
+                "id": "events",
+                "label": "Events",
+                "docId": "open-agent-format-page-events"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "wxml",
+        "label": "WXML Reference",
+        "expanded": false,
+        "children": [
+          {
+            "id": "intro",
+            "label": "Introduction"
+          },
+          {
+            "id": "data-binding",
+            "label": "Data Binding"
+          },
+          {
+            "id": "conditional-rendering",
+            "label": "Conditional Rendering"
+          },
+          {
+            "id": "list-rendering",
+            "label": "List Rendering"
+          },
+          {
+            "id": "template",
+            "label": "Template",
+            "status": "unsupported"
+          }
+        ],
+        "hasIndex": true
+      },
+      {
+        "id": "wxss",
+        "label": "WXSS Reference",
+        "expanded": false,
+        "children": [
+          {
+            "id": "intro",
+            "label": "Introduction"
+          },
+          {
+            "id": "selector",
+            "label": "Selectors"
+          },
+          {
+            "id": "pseudo-class",
+            "label": "Pseudo Classes",
+            "status": "partial"
+          },
+          {
+            "id": "pseudo-element",
+            "label": "Pseudo Elements",
+            "status": "unsupported"
+          },
+          {
+            "id": "property",
+            "label": "Properties"
+          },
+          {
+            "id": "value-type",
+            "label": "Value Types"
+          },
+          {
+            "id": "function",
+            "label": "Functions"
+          },
+          {
+            "id": "at-rule",
+            "label": "At-rules",
+            "status": "partial"
+          }
+        ],
+        "hasIndex": true
+      }
+    ],
+    "slug": "framework"
+  },
+  {
+    "id": "2-components",
+    "label": "Components",
+    "children": [
+      {
+        "id": "view-containers",
+        "label": "View Containers",
+        "expanded": true,
+        "children": [
+          {
+            "id": "view",
+            "label": "view",
+            "docId": "view"
+          },
+          {
+            "id": "scroll-view",
+            "label": "scroll-view",
+            "docId": "scroll-view"
+          }
+        ]
+      },
+      {
+        "id": "basic-content",
+        "label": "Basic Content",
+        "expanded": true,
+        "children": [
+          {
+            "id": "text",
+            "label": "text",
+            "docId": "text"
+          },
+          {
+            "id": "icon",
+            "label": "icon",
+            "docId": "icon",
+            "status": "unsupported"
+          },
+          {
+            "id": "error-state",
+            "label": "error-state",
+            "docId": "error-state"
+          },
+          {
+            "id": "streamdown",
+            "label": "streamdown",
+            "docId": "streamdown",
+            "status": "unsupported"
+          }
+        ]
+      },
+      {
+        "id": "form-components",
+        "label": "Form Components",
+        "expanded": true,
+        "children": [
+          {
+            "id": "button",
+            "label": "button",
+            "docId": "button"
+          }
+        ]
+      },
+      {
+        "id": "date-components",
+        "label": "Date Components",
+        "expanded": true,
+        "children": [
+          {
+            "id": "calendar",
+            "label": "calendar",
+            "docId": "calendar"
+          }
+        ]
+      },
+      {
+        "id": "media-components",
+        "label": "Media Components",
+        "expanded": true,
+        "children": [
+          {
+            "id": "image",
+            "label": "image",
+            "docId": "image"
+          },
+          {
+            "id": "lottie-view",
+            "label": "lottie-view",
+            "docId": "lottie-view"
+          }
+        ]
+      },
+      {
+        "id": "canvas-chart",
+        "label": "Canvas & Charts",
+        "expanded": true,
+        "children": [
+          {
+            "id": "canvas",
+            "label": "canvas",
+            "docId": "canvas"
+          },
+          {
+            "id": "chart",
+            "label": "chart",
+            "docId": "chart"
+          }
+        ]
+      },
+      {
+        "id": "ai-components",
+        "label": "AI Components",
+        "expanded": true,
+        "children": [
+          {
+            "id": "a2ui",
+            "label": "a2ui",
+            "docId": "a2ui"
+          }
+        ]
+      }
+    ],
+    "slug": "components"
+  },
+  {
+    "id": "3-api",
+    "label": "API",
+    "children": [
+      {
+        "id": "basic",
+        "label": "Basics",
+        "children": []
+      },
+      {
+        "id": "framework",
+        "label": "Framework",
+        "expanded": true,
+        "children": [
+          {
+            "id": "app",
+            "label": "App",
+            "docId": "framework-app"
+          },
+          {
+            "id": "page",
+            "label": "Page",
+            "docId": "framework-page"
+          },
+          {
+            "id": "global",
+            "label": "Global",
+            "docId": "framework-global"
+          }
+        ]
+      },
+      {
+        "id": "route",
+        "label": "Routing",
+        "children": []
+      },
+      {
+        "id": "navigator",
+        "label": "Navigator",
+        "docId": "weixin-compatible-apis-navigator",
+        "children": []
+      },
+      {
+        "id": "media",
+        "label": "Media",
+        "expanded": false,
+        "children": [
+          {
+            "id": "sound",
+            "label": "Sound"
+          },
+          {
+            "id": "audio-player",
+            "label": "Audio Player"
+          },
+          {
+            "id": "camera",
+            "label": "Camera",
+            "docId": "media-camera"
+          },
+          {
+            "id": "recorder",
+            "label": "Recorder",
+            "docId": "media-recorder"
+          }
+        ]
+      },
+      {
+        "id": "network",
+        "label": "Network",
+        "expanded": false,
+        "children": [
+          {
+            "id": "https-sse",
+            "label": "HTTPS / SSE"
+          },
+          {
+            "id": "websocket",
+            "label": "WebSocket"
+          },
+          {
+            "id": "url",
+            "label": "URL",
+            "docId": "network-url"
+          }
+        ]
+      },
+      {
+        "id": "device",
+        "label": "Device",
+        "expanded": false,
+        "children": [
+          {
+            "id": "bluetooth",
+            "label": "Bluetooth"
+          },
+          {
+            "id": "barcode",
+            "label": "Barcode",
+            "docId": "device-barcode"
+          },
+          {
+            "id": "absolute-orientation-sensor",
+            "label": "Absolute Orientation Sensor"
+          },
+          {
+            "id": "accelerometer",
+            "label": "Accelerometer"
+          },
+          {
+            "id": "gyroscope",
+            "label": "Gyroscope"
+          }
+        ]
+      },
+      {
+        "id": "ai",
+        "label": "AI",
+        "expanded": false,
+        "children": [
+          {
+            "id": "speech-recognition",
+            "label": "Speech Recognition"
+          },
+          {
+            "id": "speech-synthesis",
+            "label": "Speech Synthesis"
+          },
+          {
+            "id": "language-model",
+            "label": "Large Language Model"
+          }
+        ]
+      },
+      {
+        "id": "storage",
+        "label": "Data Storage",
+        "expanded": false,
+        "children": [
+          {
+            "id": "storage-api",
+            "label": "localStorage",
+            "docId": "storage-api"
+          }
+        ]
+      },
+      {
+        "id": "canvas",
+        "label": "Canvas",
+        "children": [],
+        "hasIndex": true
+      },
+      {
+        "id": "encoding",
+        "label": "Encoding",
+        "children": []
+      },
+      {
+        "id": "crypto",
+        "label": "Crypto",
+        "children": []
+      },
+      {
+        "id": "console",
+        "label": "Console",
+        "children": []
+      },
+      {
+        "id": "performance",
+        "label": "Performance",
+        "children": []
+      },
+      {
+        "id": "open-services",
+        "label": "Open Services",
+        "children": []
+      },
+      {
+        "id": "web-apis",
+        "label": "Web API",
+        "children": []
+      },
+      {
+        "id": "weixin-compatible-apis",
+        "label": "WeChat Mini Program Compatible APIs",
+        "expanded": false,
+        "children": [
+          {
+            "id": "base",
+            "label": "Base"
+          },
+          {
+            "id": "canvas",
+            "label": "Canvas"
+          },
+          {
+            "id": "media",
+            "label": "Media"
+          },
+          {
+            "id": "networking",
+            "label": "Networking"
+          },
+          {
+            "id": "router",
+            "label": "Router"
+          },
+          {
+            "id": "speech",
+            "label": "Speech"
+          },
+          {
+            "id": "storage",
+            "label": "Storage"
+          },
+          {
+            "id": "system",
+            "label": "System"
+          },
+          {
+            "id": "ui",
+            "label": "UI"
+          }
+        ]
+      }
+    ],
+    "slug": "api"
+  },
+  {
+    "id": "4-design",
+    "label": "Design",
+    "children": [
+      {
+        "id": "visual",
+        "label": "Visual Design",
+        "children": []
+      },
+      {
+        "id": "interaction",
+        "label": "Interaction Design",
+        "children": []
+      }
+    ],
+    "slug": "design"
+  },
+  {
+    "id": "5-tools",
+    "label": "Tools",
+    "children": [
+      {
+        "id": "intro",
+        "label": "Introduction",
+        "children": []
+      },
+      {
+        "id": "craft",
+        "label": "Craft Platform",
+        "children": []
+      },
+      {
+        "id": "debug",
+        "label": "On-Device Debugging",
+        "children": []
+      }
+    ],
+    "slug": "tools"
+  },
+  {
+    "id": "6-changelog",
+    "label": "Changelog",
+    "children": [
+      {
+        "id": "latest",
+        "label": "Latest Version",
+        "children": []
+      }
+    ],
+    "slug": "changelog"
+  }
+]

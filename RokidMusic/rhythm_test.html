@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RokidMusic Rhythm Test</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --green: #00ff44;
+    --green-dim: #008f2c;
+    --bg: #000;
+    --panel: #050805;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--green);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  }
+
+  .app {
+    width: max-content;
+    min-width: 100vw;
+    padding: 18px 18px 36px;
+  }
+
+  header {
+    margin-bottom: 14px;
+    border-bottom: 1px solid var(--green-dim);
+    padding-bottom: 10px;
+  }
+
+  h1 {
+    margin: 0;
+    font-size: 22px;
+    line-height: 1.1;
+    letter-spacing: 0;
+  }
+
+  .meta {
+    margin-top: 6px;
+    font-size: 12px;
+    line-height: 1.5;
+    opacity: 0.85;
+  }
+
+  .case {
+    display: grid;
+    grid-template-columns: 190px auto;
+    gap: 10px;
+    align-items: start;
+    margin: 12px 0;
+  }
+
+  .label {
+    font-size: 12px;
+    line-height: 1.4;
+    padding-top: 14px;
+    white-space: pre-line;
+  }
+
+  canvas {
+    display: block;
+    background: var(--panel);
+    border: 1px solid var(--green-dim);
+  }
+</style>
+</head>
+<body>
+<main class="app">
+  <header>
+    <h1>RokidMusic Rhythm Test</h1>
+    <div class="meta">Green monochrome rhythm skeleton tests. 技巧层不参与这里的距离计算。</div>
+  </header>
+  <section id="cases"></section>
+</main>
+
+<script>
+const G = '#00ff44';
+const GD = '#008f2c';
+const BG = '#050805';
+const PPQ = 960;
+const layout = {
+  top: 24,
+  left: 24,
+  right: 24,
+  bottom: 72,
+  stringGap: 14,
+  beatWidth: 96,
+  rhythmY: 130,
+  noteRadiusX: 6,
+  noteRadiusY: 4
+};
+
+const rhythmCases = [
+  { title: 'Single: whole', items: [note(0, 1, '1')] },
+  { title: 'Single: dotted whole', items: [note(0, 1, '1.', 1)] },
+  { title: 'Single: half', items: [note(0, 2, '2')] },
+  { title: 'Single: dotted half', items: [note(0, 2, '2.', 1)] },
+  { title: 'Single: quarter', items: [note(0, 4, '4')] },
+  { title: 'Single: dotted quarter', items: [note(0, 4, '4.', 1)] },
+  { title: 'Single: eighth', items: [note(0, 8, '8')] },
+  { title: 'Single: dotted eighth', items: [note(0, 8, '8.', 1)] },
+  { title: 'Single: sixteenth', items: [note(0, 16, '16')] },
+  { title: 'Single: dotted sixteenth', items: [note(0, 16, '16.', 1)] },
+  { title: 'Single: thirty-second', items: [note(0, 32, '32')] },
+  { title: 'Single: dotted thirty-second', items: [note(0, 32, '32.', 1)] },
+  { title: 'Single: sixty-fourth', items: [note(0, 64, '64')] },
+  { title: 'Rest: whole / half / dotted half', items: [rest(0, 1), rest(3840, 2), rest(5760, 2, 1)] },
+  { title: 'Rest: quarter / eighth / sixteenth / 32nd / 64th', items: [rest(0, 4), rest(960, 8), rest(1440, 16), rest(1680, 32), rest(1800, 64)] },
+  { title: 'Long group: 2 + 2', items: sequence([2, 2]) },
+  { title: 'Long group: 2 + 4 + 4', items: sequence([2, 4, 4]) },
+  { title: 'Long group: 2. + 4', items: sequence([{ base: 2, dots: 1 }, 4]) },
+  { title: 'Long group: 4 + 2.', items: sequence([4, { base: 2, dots: 1 }]) },
+  { title: 'Long group: 4. + 8', items: sequence([{ base: 4, dots: 1 }, 8]) },
+  { title: 'Long group: 8 + 4.', items: sequence([8, { base: 4, dots: 1 }]) },
+  { title: 'Pair: 8 + 8', items: group([8, 8]) },
+  { title: 'Pair: 8. + 16\n3/16 + 1/16', items: group([{ base: 8, dots: 1 }, 16]) },
+  { title: 'Pair: 16 + 8.\n1/16 + 3/16', items: group([16, { base: 8, dots: 1 }]) },
+  { title: 'Pair: 16 + 16', items: group([16, 16]) },
+  { title: 'Pair: 16. + 32\n3/32 + 1/32', items: group([{ base: 16, dots: 1 }, 32]) },
+  { title: 'Pair: 32 + 16.\n1/32 + 3/32', items: group([32, { base: 16, dots: 1 }]) },
+  { title: 'Pair: 32. + 64\n3/64 + 1/64', items: group([{ base: 32, dots: 1 }, 64]) },
+  { title: 'Pair: 64 + 32.\n1/64 + 3/64', items: group([64, { base: 32, dots: 1 }]) },
+  { title: 'Pair: 32 + 32', items: group([32, 32]) },
+  { title: 'Pair: 64 + 64', items: group([64, 64]) },
+  { title: 'Pair: 8 + 16', items: group([8, 16]) },
+  { title: 'Pair: 16 + 8', items: group([16, 8]) },
+  { title: 'Pair: 16 + 32', items: group([16, 32]) },
+  { title: 'Pair: 32 + 16', items: group([32, 16]) },
+  { title: 'Pair: 32 + 64', items: group([32, 64]) },
+  { title: 'Pair: 64 + 32', items: group([64, 32]) },
+  { title: 'Triple: 8 + 16 + 16', items: group([8, 16, 16]) },
+  { title: 'Triple: 16 + 16 + 8', items: group([16, 16, 8]) },
+  { title: 'Triple: 16 + 8 + 16', items: group([16, 8, 16]) },
+  { title: 'Triple: 16 + 32 + 32', items: group([16, 32, 32]) },
+  { title: 'Triple: 32 + 32 + 16', items: group([32, 32, 16]) },
+  { title: 'Triple: 32 + 16 + 32', items: group([32, 16, 32]) },
+  { title: 'Triple: 32 + 64 + 64', items: group([32, 64, 64]) },
+  { title: 'Triple: 64 + 64 + 32', items: group([64, 64, 32]) },
+  { title: 'Triple: 64 + 32 + 64', items: group([64, 32, 64]) },
+  { title: 'Four: 16 + 16 + 16 + 16', items: group([16, 16, 16, 16]) },
+  { title: 'Four: 8 + 8 + 8 + 8', items: group([8, 8, 8, 8]) },
+  { title: 'Four: 32 + 32 + 32 + 32', items: group([32, 32, 32, 32]) },
+  { title: 'Four: 64 + 64 + 64 + 64', items: group([64, 64, 64, 64]) },
+  { title: 'Thirty-second: 32 x 4', items: group([32, 32, 32, 32]) },
+  { title: 'Sixty-fourth: 64 x 8', items: group([64, 64, 64, 64, 64, 64, 64, 64]) },
+  { title: 'Mixed: 16 + 32 + 32', items: group([16, 32, 32]) },
+  { title: 'Mixed: 8 + 16 + 32 + 32', items: group([8, 16, 32, 32]) },
+  { title: 'Mixed: 16 + 32 + 64 + 64', items: group([16, 32, 64, 64]) }
+];
+
+function note(tick, base, label, dots = 0, groupId = null) {
+  return { type: 'note', tick, duration: { base, dots }, label, groupId };
+}
+
+function rest(tick, base, dots = 0) {
+  return { type: 'rest', tick, duration: { base, dots }, label: 'R' };
+}
+
+function group(pattern) {
+  const id = 'g' + Math.random().toString(36).slice(2);
+  let tick = 0;
+  return pattern.map((entry, index) => {
+    const duration = typeof entry === 'number' ? { base: entry, dots: 0 } : { base: entry.base, dots: entry.dots || 0 };
+    const item = note(tick, duration.base, String(index + 1), duration.dots, id);
+    tick += durationTicks(duration);
+    return item;
+  });
+}
+
+function sequence(pattern) {
+  let tick = 0;
+  return pattern.map((entry, index) => {
+    const duration = typeof entry === 'number' ? { base: entry, dots: 0 } : { base: entry.base, dots: entry.dots || 0 };
+    const item = note(tick, duration.base, String(index + 1), duration.dots, null);
+    tick += durationTicks(duration);
+    return item;
+  });
+}
+
+function main() {
+  const root = document.getElementById('cases');
+  rhythmCases.forEach(testCase => {
+    const row = document.createElement('div');
+    row.className = 'case';
+
+    const label = document.createElement('div');
+    label.className = 'label';
+    label.textContent = testCase.title;
+
+    const canvas = document.createElement('canvas');
+    renderCase(canvas, testCase);
+
+    row.append(label, canvas);
+    root.appendChild(row);
+  });
+}
+
+function renderCase(canvas, testCase) {
+  const totalTicks = Math.max(...testCase.items.map(item => item.tick + durationTicks(item.duration)), PPQ);
+  const width = Math.ceil(layout.left + ticksToX(totalTicks) + layout.right);
+  const height = layout.top + layout.stringGap * 5 + layout.bottom;
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = width * dpr;
+  canvas.height = height * dpr;
+  canvas.style.width = `${width}px`;
+  canvas.style.height = `${height}px`;
+
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  ctx.fillStyle = BG;
+  ctx.fillRect(0, 0, width, height);
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  drawStaff(ctx, width);
+  drawBeatGuides(ctx, totalTicks);
+
+  const indexed = testCase.items.map(item => ({ item, x: layout.left + ticksToX(item.tick), y: stringY(3) }));
+  const beamGroups = beamGroupsForCase(indexed);
+  indexed.forEach(pos => {
+    if (pos.item.type === 'rest') drawRest(ctx, pos.x, stringY(3), pos.item.duration);
+    else {
+      drawNote(ctx, pos);
+      drawRhythm(ctx, pos.x, pos.item.duration, pos.item.groupId, testBeamedDotX(pos, beamGroups.get(pos.item.groupId)));
+    }
+  });
+  drawBeams(ctx, indexed);
+}
+
+function beamGroupsForCase(indexed) {
+  const groups = new Map();
+  for (const pos of indexed) {
+    if (!pos.item.groupId || pos.item.type !== 'note') continue;
+    if (!groups.has(pos.item.groupId)) groups.set(pos.item.groupId, []);
+    groups.get(pos.item.groupId).push(pos);
+  }
+  for (const group of groups.values()) group.sort((a, b) => a.item.tick - b.item.tick);
+  return groups;
+}
+
+function testBeamedDotX(pos, group) {
+  if (!pos.item.groupId || !pos.item.duration?.dots || !group) return null;
+  const index = group.indexOf(pos);
+  if (index < 0) return null;
+  const next = group[index + 1];
+  const prev = group[index - 1];
+  if (next) return Math.min(next.x - 4, pos.x + 6);
+  if (prev) return Math.max(prev.x + 4, pos.x - 4);
+  return null;
+}
+
+function drawStaff(ctx, width) {
+  ctx.strokeStyle = GD;
+  ctx.lineWidth = 1;
+  for (let string = 1; string <= 6; string++) {
+    line(ctx, layout.left - 10, stringY(string), width - layout.right + 10, stringY(string));
+  }
+  ctx.strokeStyle = G;
+  ctx.lineWidth = 1.5;
+  line(ctx, layout.left - 10, stringY(1) - 6, layout.left - 10, stringY(6) + 6);
+  line(ctx, width - layout.right + 10, stringY(1) - 6, width - layout.right + 10, stringY(6) + 6);
+}
+
+function drawBeatGuides(ctx, totalTicks) {
+  ctx.strokeStyle = '#00551d';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([3, 5]);
+  for (let tick = 0; tick <= totalTicks; tick += PPQ) {
+    const x = layout.left + ticksToX(tick);
+    line(ctx, x, stringY(1) - 9, x, layout.rhythmY + 20);
+  }
+  ctx.setLineDash([]);
+}
+
+function drawNote(ctx, pos) {
+  ctx.font = 'bold 13px monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const text = pos.item.label;
+  const w = Math.max(14, ctx.measureText(text).width + 7);
+  ctx.fillStyle = BG;
+  ctx.fillRect(pos.x - w / 2, pos.y - 8, w, 16);
+  ctx.fillStyle = G;
+  ctx.fillText(text, pos.x, pos.y);
+}
+
+function drawRhythm(ctx, x, duration, groupId, dotXOverride = null) {
+  const base = duration?.base || 4;
+  const dots = duration?.dots || 0;
+  const stemTop = stringY(6) + 8;
+  const stemBottom = layout.rhythmY;
+
+  if (base === 1 || base === 2 || base === 4) {
+    ctx.strokeStyle = G;
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.ellipse(x - 5, stemBottom + 2, layout.noteRadiusX, layout.noteRadiusY, -0.25, 0, Math.PI * 2);
+    if (base === 1 || base === 2) ctx.stroke(); else ctx.fill();
+  }
+
+  if (base >= 2 && base !== 1) {
+    ctx.strokeStyle = G;
+    ctx.lineWidth = 1.2;
+    line(ctx, x + 1, stemTop, x + 1, stemBottom);
+  }
+
+  if (base >= 8 && !groupId) {
+    flagDown(ctx, x + 1, stemBottom, beamLevels(base));
+  }
+
+  if (dots) {
+    ctx.fillStyle = G;
+    const dotX = dotXOverride ?? x + dotOffsetX(duration, Boolean(groupId));
+    const dotY = groupId ? stemBottom - 6 : stemBottom + 2;
+    for (let i = 0; i < dots; i++) {
+      ctx.beginPath();
+      ctx.arc(dotX + i * 7, dotY, 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+}
+
+function dotOffsetX(duration, beamed) {
+  const ticks = durationTicks(duration);
+  if (beamed) return Math.min(18, Math.max(10, ticks / PPQ * layout.beatWidth * 0.18));
+  return 11;
+}
+
+function drawBeams(ctx, indexed) {
+  const groups = new Map();
+  for (const pos of indexed) {
+    if (!pos.item.groupId || pos.item.type !== 'note') continue;
+    if (!groups.has(pos.item.groupId)) groups.set(pos.item.groupId, []);
+    groups.get(pos.item.groupId).push(pos);
+  }
+
+  ctx.strokeStyle = G;
+  ctx.lineWidth = 3;
+  for (const group of groups.values()) {
+    group.sort((a, b) => a.x - b.x);
+    const maxLevel = Math.max(...group.map(pos => beamLevels(pos.item.duration.base)));
+    for (let level = 1; level <= maxLevel; level++) {
+      drawBeamLevel(ctx, group, layout.rhythmY - (level - 1) * 6, level);
+    }
+  }
+  ctx.lineWidth = 1;
+}
+
+function drawBeamLevel(ctx, group, y, level) {
+  let runStart = null;
+  let runEnd = null;
+  let runStartIndex = -1;
+  for (let index = 0; index < group.length; index++) {
+    const pos = group[index];
+    const hasBeam = beamLevels(pos.item.duration.base) >= level;
+    if (hasBeam) {
+      if (!runStart) {
+        runStart = pos;
+        runStartIndex = index;
+      }
+      runEnd = pos;
+    } else if (runStart) {
+      drawBeamRun(ctx, runStart, runEnd, y, group, runStartIndex);
+      runStart = null;
+      runEnd = null;
+      runStartIndex = -1;
+    }
+  }
+  if (runStart) drawBeamRun(ctx, runStart, runEnd, y, group, runStartIndex);
+}
+
+function drawBeamRun(ctx, start, end, y, group, startIndex) {
+  if (start === end) {
+    const isLast = startIndex >= group.length - 1;
+    const hasPrev = startIndex > 0;
+    const hook = Math.min(14, layout.beatWidth / 6);
+    if (isLast && hasPrev) line(ctx, start.x - hook, y, start.x + 1, y);
+    else line(ctx, start.x + 1, y, start.x + hook, y);
+    return;
+  }
+  line(ctx, start.x + 1, y, end.x + 1, y);
+}
+
+function drawRest(ctx, x, y, duration) {
+  const base = duration?.base || 4;
+  ctx.fillStyle = G;
+  if (base === 4) {
+    ctx.fillRect(x - 7, stringY(3) - 6, 14, 5);
+    drawRestDots(ctx, x, restDotY(base), duration.dots || 0);
+  } else if (base === 2) {
+    ctx.fillRect(x - 6, stringY(3) - 8, 12, 7);
+    drawRestDots(ctx, x, restDotY(base), duration.dots || 0);
+  } else if (base === 1) {
+    ctx.fillRect(x - 6, stringY(3) - 2, 12, 7);
+    drawRestDots(ctx, x, restDotY(base), duration.dots || 0);
+  } else {
+    drawEighthRest(ctx, x, y);
+    drawRestDots(ctx, x, restDotY(base), duration.dots || 0);
+    ctx.strokeStyle = G;
+    ctx.lineWidth = 1.2;
+    for (let level = 2; level <= beamLevels(base); level++) {
+      const yy = y + 4 + (level - 2) * 5;
+      line(ctx, x + 5, yy, x + 12, yy);
+    }
+  }
+}
+
+function drawRestDots(ctx, x, y, dots) {
+  ctx.fillStyle = G;
+  for (let i = 0; i < dots; i++) {
+    ctx.beginPath();
+    ctx.arc(x + 11 + i * 7, y + 2, 2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function restDotY(base) {
+  if (base === 1) return stringY(3) + 1;
+  if (base === 2) return stringY(3) - 5;
+  if (base === 4) return stringY(3) - 4;
+  return stringY(3) - 2;
+}
+
+function drawEighthRest(ctx, x, y) {
+  ctx.strokeStyle = G;
+  ctx.fillStyle = G;
+  ctx.lineWidth = 1.6;
+  const restY = y + 5;
+  ctx.beginPath();
+  ctx.arc(x - 2, restY - 8, 2.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(x + 1, restY - 7);
+  ctx.quadraticCurveTo(x + 7, restY - 5, x + 3, restY - 1);
+  ctx.lineTo(x - 3, restY + 9);
+  ctx.stroke();
+}
+
+function flagDown(ctx, x, y, count) {
+  ctx.strokeStyle = G;
+  ctx.lineWidth = 1.2;
+  for (let i = 0; i < count; i++) {
+    const yy = y - i * 6;
+    ctx.beginPath();
+    ctx.moveTo(x, yy);
+    ctx.quadraticCurveTo(x + 12, yy - 5, x + 6, yy - 13);
+    ctx.stroke();
+  }
+}
+
+function durationTicks(duration) {
+  let ticks = PPQ * 4 / (duration.base || 4);
+  if (duration.dots === 1) ticks *= 1.5;
+  if (duration.dots === 2) ticks *= 1.75;
+  if (duration.tuplet) ticks = ticks * (duration.tuplet.normal || 2) / (duration.tuplet.actual || 3);
+  return Math.round(ticks);
+}
+
+function ticksToX(ticks) {
+  return ticks / PPQ * layout.beatWidth;
+}
+
+function beamLevels(base) {
+  if (base < 8) return 0;
+  return Math.max(1, Math.round(Math.log2(base) - 2));
+}
+
+function stringY(string) {
+  return layout.top + (Number(string) - 1) * layout.stringGap;
+}
+
+function line(ctx, x1, y1, x2, y2) {
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2, y2);
+  ctx.stroke();
+}
+
+main();
+</script>
+</body>
+</html>
