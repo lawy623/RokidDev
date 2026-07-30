@@ -1,10 +1,7 @@
 [
-  {"title": "花海", "artist": "周杰伦", "url": "data/music/huahai_douyin.tab.json"},
-  {"title": "老男孩", "artist": "筷子兄弟", "url": "data/music/laonanhai_douyin.tab.json"},
-  {"title": "你不是真正的快乐", "artist": "五月天", "url": "data/music/nibushizhengzhengkuaile_douyin.tab.json"},
-  {"title": "蒲公英的约定", "artist": "周杰伦", "url": "data/music/pugongyingdeyueding_douyin.tab.json"},
-  {"title": "天下", "artist": "张杰", "url": "data/music/tianxia_douyin.tab.json"},
-  {"title": "突然好想你", "artist": "五月天", "url": "data/music/turanhaoxiangni_douyin.tab.json"},
-  {"title": "一路向北", "artist": "周杰伦", "url": "data/music/yiluxiangbei_douyin.tab.json"},
-  {"title": "真的爱你", "artist": "BEYOND", "url": "data/music/zhendeaini_douyin.tab.json"}
+  {
+    "title": "真的爱你",
+    "artist": "BEYOND",
+    "url": "data/music/zhendeaini_douyin.tab.json"
+  },
 ]
