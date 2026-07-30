@@ -147,8 +147,10 @@ timed Event；源数字、目标数字、弧线起止点均按数字实际宽度
 
 **固定标题栏:** PlayerView 顶部标题、歌手和横线属于独立 HUD，不参与 `scrollY`
 平移；谱面 Canvas 使用横线下方的 clip 区域，滚动和播放头不能覆盖标题栏。右侧
-显示英文操作提示：浏览时 `◉ long-press to play  ◀▶ swipe`，播放时
-`● short-click pause/play  ◀▶ volume`。
+显示按状态变化的英文操作提示：浏览时 `◉ long-press to play  ◀▶ swipe`，播放时
+`● short-click pause  ◀▶ volume`，暂停时同时显示
+`◉ long-press play from top  ● short-click continue  ◀▶ swipe`。标题会按提示的实际宽度截断，
+避免暂停态较长的说明与歌曲信息重叠。
 
 ### PlayerView.kt — 交互控制器
 

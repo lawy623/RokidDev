@@ -190,16 +190,24 @@ class PlayerView(
             artist.isEmpty() -> title
             else -> "$title — $artist"
         }
+        val hint = when (mode) {
+            Mode.BROWSING -> "◉ long-press to play  ◀▶ swipe"
+            Mode.COUNTDOWN -> "◉ starting playback"
+            Mode.PLAYING -> "● short-click pause  ◀▶ volume"
+            Mode.PAUSED -> "◉ long-press play from top  ● short-click continue  ◀▶ swipe"
+        }
+        headerHintPaint.textSize = 10f
         headerPaint.textSize = 12f
-        val maxWidth = (w - 24f).coerceAtLeast(1f)
+        // Reserve the hint's real width so the longer paused-state guidance
+        // cannot overlap the song title on the compact glasses display.
+        val hintWidth = headerHintPaint.measureText(hint)
+        val maxWidth = (w - 36f - hintWidth).coerceAtLeast(1f)
         var shown = label
         while (shown.length > 1 && headerPaint.measureText(shown) > maxWidth) {
             shown = shown.dropLast(1)
         }
         if (shown != label) shown = shown.dropLast(1) + "…"
         canvas.drawText(shown, 12f, 19f, headerPaint)
-        headerHintPaint.textSize = 10f
-        val hint = if (mode == Mode.PLAYING) "● short-click pause/play  ◀▶ volume" else "◉ long-press to play  ◀▶ swipe"
         canvas.drawText(hint, w - 12f, 19f, headerHintPaint)
         canvas.drawLine(12f, HEADER_BOTTOM, w - 12f, HEADER_BOTTOM, headerLinePaint)
     }
