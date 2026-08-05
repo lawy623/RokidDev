@@ -76,6 +76,22 @@ text only — no partial hypotheses on this path.
 - `AsrController` — interface unchanged; `cancelRecording()` already exists and
   is reused by the new cancel/send paths.
 
+## Model warm-up on connect (approved 2026-08-05)
+
+"ASR READY" currently means only the asr-fwd SSH forward is up; the SenseVoice
+model loads lazily on the first transcription (~30 s cold load, 24-90 s per
+benchmark docs). Change: after the forward is established, the app immediately
+posts a ~0.5 s silent WAV to `/v1/transcribe`, which triggers the model load.
+
+- App status flow: `ASR CONNECTING` → `ASR MODEL LOADING` → `ASR READY`.
+- `shortAsrStatus` passes `ASR MODEL LOADING` through (previously any unknown
+  "ASR ..." value mapped to `ASR FAIL`).
+- Warmup retries a few times (server boot race after a debounce stop + fresh
+  login); failure → `ASR MODEL LOAD FAIL` → header shows `ASR FAIL`.
+- No server-side change: the lazy load is triggered by the warmup request.
+- Unchanged: on exit, uvicorn is killed ~60 s after the rokid session closes
+  (~1.9 GiB freed) and the app closes both SSH channels.
+
 ## Non-goals
 
 - Client VAD / trailing-silence auto-stop — deferred.
@@ -101,3 +117,6 @@ Hardware (glasses + server via SSH):
    `CANCELLED`.
 7. Exit terminal → server journal: `scheduling ASR stop` → 60 s later
    `stopping ASR`.
+8. Connect → header shows `ASR MODEL LOADING` then `ASR READY`; the first
+   transcription completes in ~1 s (model already warm), server log shows one
+   extra (silent) transcribe request for the warmup.
