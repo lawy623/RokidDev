@@ -732,7 +732,7 @@ class TerminalView(context: Context) : View(context) {
 
     /**
      * Masks IPv4 middle octets for screen-recording safety
-     * (43.xx.xx.209 -> 43.xx.xx.209). Non-IP hosts pass through unchanged.
+     * (e.g. 203.0.113.5 -> 203.xx.xx.5). Non-IP hosts pass through unchanged.
      */
     private fun maskHost(host: String): String {
         val parts = host.split('.')

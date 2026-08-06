@@ -106,7 +106,7 @@ Verified on the current glasses and Tencent Cloud server:
   placeholder Toast; palette not implemented; first press still deletes
   immediately).
 - Endpoint list masks IPv4 middle octets and hides the port for
-  screen-recording safety (`43.xx.xx.209` → `user@43.xx.xx.209`).
+  screen-recording safety (`user@43.xx.xx.209`).
 
 ### Verified 2026-08-06 (real Claude-Code interaction)
 
