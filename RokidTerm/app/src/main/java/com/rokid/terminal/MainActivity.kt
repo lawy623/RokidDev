@@ -477,7 +477,7 @@ class MainActivity : Activity() {
                 publishTerminalFrame(terminalOutput.scrollOlder())
                 return true
             }
-            KeyEvent.KEYCODE_HOME -> {
+            KeyEvent.KEYCODE_HOME, KeyEvent.KEYCODE_MOVE_HOME -> {
                 // Touchpad long press in terminal mode: fill Claude's
                 // suggested next input as a preview (user decision 2026-08-06).
                 if (event.repeatCount == 0) fillSuggestion()
@@ -533,7 +533,7 @@ class MainActivity : Activity() {
                 refreshComposer("EDITING / CLICK TO LISTEN")
                 return true
             }
-            KeyEvent.KEYCODE_HOME -> {
+            KeyEvent.KEYCODE_HOME, KeyEvent.KEYCODE_MOVE_HOME -> {
                 // Ring touchpad long press in composer = send (swapped with
                 // GO single, user decision 2026-08-06 — matches the Rokid TP
                 // long-press send).
@@ -1254,7 +1254,7 @@ class MainActivity : Activity() {
             if (event.repeatCount == 0) ssh.sendEnter()
             true
         }
-        KeyEvent.KEYCODE_HOME -> {
+        KeyEvent.KEYCODE_HOME, KeyEvent.KEYCODE_MOVE_HOME -> {
             // Ring touchpad long press = confirm (Enter).
             if (event.repeatCount == 0) ssh.sendEnter()
             true
@@ -1273,6 +1273,14 @@ class MainActivity : Activity() {
                 ssh.sendEscape()
                 cancelPanelMode()
             }
+            true
+        }
+        KeyEvent.KEYCODE_F8 -> {
+            // GO button: route to the app-side arbitration so the panel
+            // double-click cancel works — the strict-isolation else-branch
+            // would otherwise swallow F8 before handleGoKey runs
+            // (2026-08-06).
+            handleGoKey(event)
             true
         }
         else -> true // strict isolation: nothing else acts while the panel is open
@@ -1327,9 +1335,13 @@ class MainActivity : Activity() {
                 if (next) ARROW_DOWN else ARROW_UP
             }
             TerminalView.PickerAxis.HORIZONTAL -> {
-                val right = keyCode == KeyEvent.KEYCODE_DPAD_RIGHT ||
-                    (ring && keyCode == KeyEvent.KEYCODE_DPAD_LEFT) ||
-                    (!ring && keyCode == KeyEvent.KEYCODE_DPAD_DOWN)
+                // Ring arrivals are inverted: right-swipe arrives as
+                // DPAD_LEFT, left-swipe as DPAD_RIGHT. The plain
+                // "keyCode == DPAD_RIGHT" clause must NOT apply to the ring
+                // or both swipes map to "right" (2026-08-06).
+                val right = (ring && keyCode == KeyEvent.KEYCODE_DPAD_LEFT) ||
+                    (!ring && (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT ||
+                        keyCode == KeyEvent.KEYCODE_DPAD_DOWN))
                 if (right) ARROW_RIGHT else ARROW_LEFT
             }
         }

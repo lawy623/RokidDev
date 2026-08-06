@@ -92,10 +92,12 @@ Verified on the current glasses and Tencent Cloud server:
 - INMO Ring4 (`INMO Ring 0762`, vendor 05ac/0220) profiled and bound:
   touchpad single=ENTER / double=BACKSPACE (firmware-resolved) / swipe
   LEFT-RIGHT (firmware reports inverted keycodes — corrected in the mapper,
-  verified in real use) / long-press=HOME; GO button = KEY_F8 with app-side
-  arbitration (hold >800 ms = long press, second press within 500 ms =
-  double, else single). GO arbitration needed the `onKeyUp` hook — key UP
-  was previously unhandled for ring keys.
+  verified in real use) / **long-press=MOVE_HOME (122), NOT HOME (3) — the
+  app accepts both**; GO button = KEY_F8 with app-side arbitration (hold
+  >800 ms = long press, second press within 500 ms = double, else single).
+  GO arbitration needed the `onKeyUp` hook — key UP was previously
+  unhandled for ring keys. The GO button's trigger is position-sensitive:
+  presses off the sweet spot produce zero events (hardware, not code).
 - Ring glyph indicator (tilted band + prongs, no gem) next to the keyboard
   glyph; device detection via 1 s InputDevice poll.
 - COIDEA knobs reassigned to a confirm/cancel axis (user decision): left
@@ -220,6 +222,9 @@ Verified on the current glasses and Tencent Cloud server:
 - ~~Second ring device~~ — dropped 2026-08-06 (the other INMO ring does
   not power on reliably; supported external input is INMO Ring4 + COIDEA
   KM keyboard only).
+- ~~Ring4 panel gestures~~ — verified 2026-08-06: touchpad long = MOVE_HOME
+  (fixed), GO double works in the panel (F8 routed to the GO arbitration
+  past the strict isolation), horizontal-panel swipes invert-corrected.
 - ~~Busy-session queue semantics~~ — **verified 2026-08-06** against the
   real tmux/Claude session: type-ahead while Claude is busy works like a
   desktop terminal (messages queued by Claude Code, processed in order

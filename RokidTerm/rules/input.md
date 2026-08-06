@@ -291,6 +291,7 @@ when the picker finishes.
 | # | Requirement | Rokid control | COIDEA KM control | INMO Ring4 control |
 |---|---|---|---|---|
 | 1 | Up / down (navigate picker) | TP up/down swipe (PTY arrows) | Keys 2 / 5 | Touchpad left/right swipe (right = down) |
+| 1b | GO double in panel | — | — | Cancel & return (ESC + exit) — F8 is routed to the GO arbitration despite the strict isolation (fixed 2026-08-06) |
 | 2 | Left / right | TP left/right swipe (PTY arrows) | Keys 4 / 6 | Touchpad left/right swipe (ring gestures corrected — right-swipe sends arrow-right) |
 | 3 | Confirm (Enter) | **TP long press** | Left knob single (`KEY_8`) | Touchpad long press (`KEY_HOME`) |
 | 4 | Cancel picker (ESC) + exit | **TP double click** | Right knob single (`KEY_D`) | GO double click (`KEY_F8` ×2, 500 ms window — consistent with the Back/cancel double in the other modes) |
@@ -347,6 +348,16 @@ fires) — ctrl+c (key 3 / Shutter double / GO long) also works. The
 suggestion fill moved to Ring long press. Re-send the command normally
 after closing the picker.
 
+Ring4 panel swipe note (2026-08-06): the horizontal branch of the
+axis-adaptive swipe applies the ring's inverted arrivals too (left-swipe
+arrives as DPAD_RIGHT → arrow-left); previously both ring swipes mapped to
+"right" in horizontal pickers.
+Ring4 hardware note (2026-08-06): the GO button's trigger is very
+position-sensitive — presses at the "wrong" spot produce NO event at all
+(app and system see nothing). Once an event arrives the app handles it
+correctly. Not a code issue; users must press the button's sweet spot
+firmly. Touchpad long press arrives as KEYCODE_MOVE_HOME (122), not
+KEYCODE_HOME (3) — the app accepts both.
 Ring4 notes (updated 2026-08-06): composer GO single = command palette,
 composer touchpad long = send (swapped); panel cancel = GO double; GO long
 (ctrl+c) has no composer use — confirmed unnecessary, stays unused there.
