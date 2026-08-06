@@ -39,8 +39,11 @@ RokidMusic/data/tmp/
 # Samples (not our code)
 samples/
 
-# Not yet implemented
-RokidTerm/
+# Superseded on-glasses ASR test app (kept on disk, never committed)
+RokidLocalAsr/
+
+# ASR server test artifacts (real Rokid microphone recordings — keep out of git)
+RokidTerm/third_party/asr-server/test-artifacts/
 
 # Logs
 *.log

@@ -60,12 +60,22 @@ npm create @yodaos-pkg/aiui-agent my-agent
 - 生态较新, 文档仍在完善
 - 文本 500 字符限制 (CXR 自定义页)
 
+AIUI 页面可通过 `onKeyDown` / `onKeyUp` 和 `event.code` 处理返回、方向、
+确认等输入；部分 Rokid Glasses 宿主会额外提供设备侧 `GlobalHook`，用于
+表示镜腿按键/触摸事件。具体物理动作与是否被系统快捷方式占用仍需真机验证。
+
 ### 2. Android APK — 当前使用方案
 
 **在线文档:** https://rokid.github.io/glass-docs/ (本地: `.docs/glass-docs/`)
 **本地 SDK 文档:** `.docs/glass-docs/2-sdk/5-ui-sdk/`
 
 标准 Android 应用, 直接安装在眼镜上。Canvas 自绘适合复杂 UI。
+
+输入事件可通过 Android `KeyEvent` / `MotionEvent` 接收。旧版官方 Glass
+文档列出了 TP、Back、Power 和音量键映射，但不同型号和固件可能先将
+触摸手势转换为其他键值，或由系统消费。双指交互在新款设备上是官方
+确认的系统可配置能力，但公开开发文档尚未给出稳定的第三方应用事件映射。
+详见 `.docs/ROKID_INPUT_INTERACTIONS.md`。
 
 已知限制:
 - 480×640 (portrait) @ 240dpi
@@ -138,7 +148,10 @@ CXR-M 的轻量替代, 通过 Hi Rokid App 桥接 (不直接连眼镜):
   - `4-design/` — 视觉与交互设计规范
   - `5-tools/` — CLI、Craft、调试工具
 - **旧版 Glass SDK:** `.docs/glass-docs/` (Android 开发)
+- **按键、触摸板与双指交互:** `.docs/ROKID_INPUT_INTERACTIONS.md`
 - **GlassesReader SDK 文档:** `.docs/cxr-m/` 等目录（CXR SDK 文档离线页）
+- **社区参考仓库索引:** `.docs/ROKID_REFERENCE_REPOSITORIES.md`
+- **awesome-rokid 本地快照:** `.docs/references/awesome-rokid/`
 
 ## 关键 URL
 

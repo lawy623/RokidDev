@@ -22,6 +22,11 @@ This is a monorepo for Rokid Glass (AR glasses) application development. Each su
 
 Full documentation is saved locally in `.docs/glass-docs/`. The official source is https://rokid.github.io/glass-docs/.
 
+Community reference repository index: `.docs/ROKID_REFERENCE_REPOSITORIES.md`; the local snapshot of `Anezium/awesome-rokid` is under `.docs/references/awesome-rokid/`.
+
+Detailed physical-button, touchpad, AIUI `GlobalHook`, two-finger interaction,
+and device-verification reference: `.docs/ROKID_INPUT_INTERACTIONS.md`.
+
 ### Hardware Interaction Model
 
 Rokid Glass replaces touch screen with **touch pad (TP)** and has **no preview** — the real world IS the preview. Key input mappings:
@@ -38,6 +43,18 @@ Rokid Glass replaces touch screen with **touch pad (TP)** and has **no preview**
 | Back single | KEYCODE_BACK (4) | Return |
 | Back long | Intent: `com.rokid.glass.homekey.longpress` | Occupied by voice assistant |
 | Back double | Configurable (see below) | |
+| Power | KEYCODE_POWER (26) | The system may consume it first |
+| Volume+ | KEYCODE_VOLUME_UP (24) | Volume up |
+| Volume- | KEYCODE_VOLUME_DOWN (25) | Volume down |
+
+**Firmware variance:** Do not assume the table is identical on every Rokid build. On the current RokidTerminal device, the primary TP confirm action has produced `KEYCODE_ENTER` (66), and another touch action has produced `KEYCODE_NOTIFICATION` (83). For a new app or firmware, capture real `WindowManager`/app key logs first and let project-level `AGENTS.md` document the verified mapping.
+
+**Newer-device controls:** Rokid's user guide also documents model-specific
+Function and Shutter/Capture buttons, plus configurable trackpad two-finger
+shortcuts. Public documentation does not currently define a stable Android
+`KeyEvent`, `MotionEvent`, or AIUI code for two-finger gestures. Treat them as
+system-level capabilities until verified on the exact model and firmware; a
+configured AI shortcut may consume the gesture before the foreground app.
 
 ### System Configuration (via adb shell setprop)
 

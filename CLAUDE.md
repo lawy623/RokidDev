@@ -10,9 +10,13 @@ This is a monorepo for Rokid Glass (AR glasses) application development. Each su
 
 Full documentation is saved locally in `.docs/glass-docs/`. The official source is https://rokid.github.io/glass-docs/.
 
+Community reference repository index: `.docs/ROKID_REFERENCE_REPOSITORIES.md`; the local snapshot of `Anezium/awesome-rokid` is under `.docs/references/awesome-rokid/`.
+
 **Rokid 开发生态选型参考 → `.docs/ROKID_ECOSYSTEM.md`** — 对比 AIUI、Android APK、CXR-M、CXR-L、裸机开发五种路径的功能、适用场景和取舍。做技术选型时必读。
 
 **AIUI 完整开发文档 → `.docs/aiui-docs/`** (290 files) — Rokid AI 眼镜官方 JS 小程序框架。含 Canvas 2D API 参考、WXML/WXSS 组件、页面生命周期、AI 接口（ASR/TTS/LLM）、设备传感器、蓝牙、相机、音频、网络等全部 API。与已有的 `.docs/glass-docs/`（旧版 Glass SDK）互补。
+
+**按键、触摸板与双指交互参考 → `.docs/ROKID_INPUT_INTERACTIONS.md`** — 汇总 Android KeyEvent、AIUI `GlobalHook`、新款设备实体键、系统双指快捷方式及真机验证方法。
 
 ### Hardware Interaction Model
 
@@ -30,6 +34,18 @@ Rokid Glass replaces touch screen with **touch pad (TP)** and has **no preview**
 | Back single | KEYCODE_BACK (4) | Return |
 | Back long | Intent: `com.rokid.glass.homekey.longpress` | Occupied by voice assistant |
 | Back double | Configurable (see below) | |
+| Power | KEYCODE_POWER (26) | The system may consume it first |
+| Volume+ | KEYCODE_VOLUME_UP (24) | Volume up |
+| Volume- | KEYCODE_VOLUME_DOWN (25) | Volume down |
+
+**Firmware variance:** Do not assume the table is identical on every Rokid build. On the current RokidTerminal device, the primary TP confirm action has produced `KEYCODE_ENTER` (66), and another touch action has produced `KEYCODE_NOTIFICATION` (83). For a new app or firmware, capture real `WindowManager`/app key logs first and let project-level `CLAUDE.md` document the verified mapping.
+
+**Newer-device controls:** Rokid's user guide also documents model-specific
+Function and Shutter/Capture buttons, plus configurable trackpad two-finger
+shortcuts. Public documentation does not currently define a stable Android
+`KeyEvent`, `MotionEvent`, or AIUI code for two-finger gestures. Treat them as
+system-level capabilities until verified on the exact model and firmware; a
+configured AI shortcut may consume the gesture before the foreground app.
 
 ### System Configuration (via adb shell setprop)
 
@@ -174,7 +190,15 @@ RokidDev/
 │   ├── dev.sh             ← build/install/run/log helper script
 │   └── app/src/main/...
 ├── RokidMusic/
+├── RokidLocalAsr/          ← on-glasses Whisper tiny test app (superseded)
+├── RokidAiuiAsrProbe/      ← AIUI ASR capability probe
 └── RokidTerm/
+    ├── CLAUDE.md          ← terminal app guidance
+    ├── app/src/main/...   ← Android terminal app
+    └── third_party/
+        └── asr-server/    ← server-side ASR (FastAPI + SenseVoiceSmall),
+                             lives here as a RokidTerm component, not a
+                             separate repo; see its own CLAUDE.md
 ```
 
 Each sub-project should have its own `CLAUDE.md` for project-specific architecture and a `dev.sh` script encapsulating the build-deploy commands.
