@@ -1,150 +1,100 @@
-# RokidTerminal
+# RokidTerminal（RokidTerm）
 
-RokidTerminal is a remote Claude Code client for Rokid Glass. It stores one or more remote development server targets and keeps an SSH shell attached to a named `tmux` session on the selected server. SSH, tmux resume, Claude Code through DeepSeek, and the compact terminal display are working on hardware. A first local input-composer implementation is now present; native voice recognition is still unavailable on the current firmware.
+面向 Rokid Glass 的**远程 Claude Code 终端客户端**。App 通过 SSH 直连远程开发服务器，附着到命名 `tmux` 会话上运行 Claude Code（DeepSeek 凭据），把终端画面渲染到眼镜的绿色单色屏上。
 
-## Verified hardware status
+功能：真实发送/接收 Claude 对话、本地输入框（composer）、服务端语音输入（SenseVoice）、本地历史捕获与持久化、多输入设备支持。
 
-- Public-key SSH login to the Tencent Cloud server works as the unprivileged `rokid` user.
-- The app pins the independently verified server ED25519 host key.
-- Reconnecting resumes the `cloud-claude` tmux session.
-- Claude starts through `/home/rokid/bin/rokid-claude`, using an independent `rokid` API credential.
-- New Claude processes start with `--effort max --dangerously-skip-permissions`. This is an explicit choice for the dedicated, unprivileged `rokid` account; reconnecting to an existing tmux session does not relaunch Claude or reapply startup arguments.
-- The terminal is rendered as a 46-column x 30-row VT-style screen with wide-character handling.
-- `FLAG_KEEP_SCREEN_ON` keeps the display awake while the app is foregrounded. `FLAG_SECURE` is intentionally disabled during active development so screenshots and terminal-stream debugging work in every build; re-enable it before production release.
-- Android `SpeechRecognizer` is unavailable on this Rokid firmware (`android.speech.RecognitionService` returns no services), so the current speech UI is not functional.
+## 架构
 
-## Current first-stage interaction
+```
+SSH PTY 字节流
+-> 连续 UTF-8 解码（SshTerminalSession）
+-> VT/ANSI 状态机（TerminalScreen）
+-> 不可变帧（TerminalFrame）
+-> Canvas 渲染（TerminalView）
+```
 
-| Input/state | Behavior |
+- **网络层**（`SshTerminalSession`）只负责传输与解码，不解析终端语义。
+- **终端模拟**（`TerminalOutputProcessor` + `TerminalScreen`）无 Android 依赖，可独立 JVM 测试。
+- **渲染层**（`TerminalView`）只渲染，不持有或修改屏幕状态。
+- 完整规则文档见 `rules/`：`architecture.md`、`input.md`、`composer.md`、`rendering.md`、`voice.md`。
+
+## 已验证的硬件状态
+
+- 公钥 SSH 登录腾讯云服务器（非特权 `rokid` 用户）。
+- 服务器 ED25519 主机密钥独立验证并固定（Bouncy Castle）。
+- 断线重连恢复 `cloud-claude` tmux 会话；运行中的任务（如 `sleep`）不受影响。
+- Claude 通过 `/home/rokid/bin/rokid-claude` 启动（独立 `rokid` 凭据），带 `--effort max --dangerously-skip-permissions`。
+- 显示网格 **54 列 × 36 行**（480×640，实测确认），完整宽字符处理。
+- `FLAG_KEEP_SCREEN_ON` 保持屏幕常亮；`FLAG_SECURE` 开发期故意关闭（便于 ADB 截图与终端流调试），**发布前需恢复**。
+- 语音输入端到端验证（2026-08-05）：录音 → 服务端 SenseVoice 识别（`asr-fwd` 通道）→ 草稿 → 发送。
+
+## 输入设备
+
+| 设备 | 绑定状态 |
 |---|---|
-| TP swipe on target list | Select a saved development server |
-| TP click on target list | Connect to the selected target |
-| TP click in a connected terminal | Return to the live bottom and open the local composer after the double-click arbitration window |
-| TP left/up direction while the composer is closed | Browse three rows toward older local terminal history |
-| TP right/down direction while the composer is closed | Browse three rows toward newer history, clamped at the live bottom |
-| TP click while composer is open | Start/toggle speech when a recognizer exists; it never deletes text. Current firmware shows `VOICE UNAVAILABLE / USE KEYBOARD` |
-| TP left/right while composer is open | Move the local cursor by a Unicode grapheme |
-| Right-side Shutter/Capture while composer is open | Delete the grapheme before the local cursor. Standard Android `KEYCODE_CAMERA` is supported provisionally; the physical button event still requires device verification |
-| Bluetooth printable key while composer is open | Insert text at the local cursor |
-| Bluetooth `KEYCODE_DEL` while composer is open | Delete the grapheme before the local cursor |
-| Primary long press, or legacy `KEYCODE_TV`, in composer | Send the non-empty draft to Claude with Enter |
-| Primary double click in composer | Discard the unsent draft and close the composer |
-| Android Back (`KEYCODE_BACK`) in composer | Fallback: discard the entire unsent draft and close the composer; this is not the Shutter/Capture button |
-| Back in terminal | Disconnect and return to the target list |
-| Click while an error is shown | Retry the active endpoint |
+| **Rokid 触摸板**（TP） | ✅ 单击/滑动/长按/快门（长按与快门经系统广播拦截） |
+| **COIDEA KM 小键盘** | ✅ 双旋钮 ×5 动作 + 6 键，语义按模式分发（合同见 `rules/input.md`） |
+| **INMO Ring4 戒指** | ✅ 触控板（单击/双击/左右滑/长按）+ GO 键（单击/双击/长按仲裁） |
+| ~~第二个 INMO 戒指~~ | ❌ 无法可靠开机，不支持（2026-08-06 决定） |
 
-**Back, Shutter, and keyboard Backspace are three distinct inputs.** In this project, Back means Android `KEYCODE_BACK` (4), not the right-side photo/Shutter button; while composing it is only a fallback that cancels the whole unsent draft. The desired glasses-only delete control is the right-side Shutter/Capture button. The app now handles the standard Android full-shutter event `KEYCODE_CAMERA` as immediate grapheme-aware deletion and consumes `KEYCODE_FOCUS` without deleting twice, but the exact event emitted by this glasses model and firmware is not yet hardware-verified. Bluetooth Backspace remains `KEYCODE_DEL`. TP single-click starts/toggles listening or remains reserved and never deletes, so it does not compete with TP double-click cancellation. `KEYCODE_NOTIFICATION` remains unassigned.
+## 终端历史
 
-The local composer is an opaque overlay above the still-live terminal. Opening it first returns the terminal viewport to the live bottom. Remote frames continue to be decoded and rendered while the draft is edited. Its editor handles Chinese text, surrogate-pair emoji, combining marks, emoji modifiers, regional-indicator flags, and ZWJ sequences without placing the cursor inside or deleting half of a grapheme. Draft text is sent only after an explicit long-press send action. If SSH is disconnected, the draft remains local and is not sent.
+- **会话内捕获**：Claude Code 使用重绘式渲染（绝对定位改写、无滚动转义码），处理器通过**基线对比**检测内容上移，把滚出屏幕的对话行推入本地历史（上限 5000 行）。
+- **持久化**：按端点保存到 app 私有目录（`files/scrollback_<端点>.txt`），退出/断开时保存、重连时恢复；文件保留最近 1000 行（约 50-150 轮对话），每次会话覆写、不累积。背景色以 SGR 标记内联保存，用户消息块的深色填充跨会话保留。
+- 历史浏览：左/上 = 更旧，右/下 = 更新；浏览时有新输出到达显示 `NEW OUTPUT` 提示。
 
-When the composer is closed, left/up and right/down directional events browse local terminal history instead of emitting remote PTY arrow sequences. The viewport is clamped between the oldest retained row and the live bottom. New remote output does not force a historical viewport back to live; the footer adds `NEW OUTPUT`, and the historical cursor remains hidden until the user reaches live again or opens the composer. The initial history limit is 1000 rows captured only from full-screen scrolling of the primary terminal buffer. Reset, viewport resize, and CSI `3J` clear it. Partial scroll regions and alternate-screen output are deliberately excluded, so tmux/Claude alternate-screen redraws may provide incomplete or no local history. The exact touch-pad direction and fast-swipe ergonomics still require verification on the glasses.
+## 输入框（Composer）与语音
 
-The TP single/long/double gesture mapping is implemented with Android timing thresholds but has not yet been fully hardware-verified on the current firmware. In particular, the device may represent long press as a held `KEYCODE_ENTER` or as `KEYCODE_TV`; both paths are accepted in the composer. Shutter deletion does not use the TP click/double-click arbitration window: a received `KEYCODE_CAMERA` deletes immediately on its first key-down. The real Bluetooth ring, mini-keyboard, and physical Shutter/Capture, Function, recording, and DJI Mic 2 controls still require raw-event profiling.
+- 本地输入框覆盖在仍实时更新的终端之上：Unicode 字素级编辑、光标移动、退格删除、显式发送/取消。
+- 发送 = TP 长按 / 左旋钮双击；取消 = 右旋钮单击 / 双击（500ms 窗口）。
+- 语音 = 左旋钮单击开始/停止录音，服务端 SenseVoice 识别后填入草稿，确认后发送。
+- 忙时发送已验证：Claude 忙碌（如执行长命令）时发送的消息会被 Claude Code 自身排队，任务结束后按顺序处理，行为与桌面终端一致。
 
-While RokidTerminal is in the foreground, its window requests that the display remain awake. Leaving or closing the app returns screen timeout control to the Rokid system. The display uses a compact 46x30 terminal grid for the 480x640 panel. It parses the common cursor, erase, insert/delete, scroll, and delayed-wrap sequences used by tmux and Claude Code. Colors are reduced for the monochrome display while meaningful text attributes remain represented. Remote PTY arrow forwarding remains available in the session layer for a future explicit raw-terminal interaction context, but idle directional input currently belongs to local history browsing.
+## 输入历史与建议
 
-## Remaining unified input work
+- 本地输入历史缓存 50 条；浏览序列：[最旧…最新] → 空条目（可显示远端建议的浅色文本）→ 深色建议。
+- 键 4 = 更旧、键 6 = 更新；建议文本不存入历史（临时性），TP/戒指长按填充到输入框。
+- Claude 的下一输入建议（输入行浅色文本）自动提取，右键/长按 TP 填充。
 
-The current composer is the first implementation slice. The completed design separates speech/audio input from physical control input. Speech may use the glasses microphone or a verified external microphone such as DJI Mic 2. Controls may come from the glasses, a Bluetooth ring, or an optional Bluetooth mini-keyboard. All three control surfaces may remain connected and alternate within the same session without switching modes or selecting an exclusive active controller. The keyboard is expected to have approximately Up, Down, Left, Right, Delete/Backspace, `/`, and possibly a recording key; the ring's actual controls are still unknown. Their Android keycodes and HID behavior must be captured before assignment.
+## 渲染约定
 
-Glasses, ring, and keyboard events will map into shared semantic actions before context-dependent behavior or terminal encoding. Device identity remains available so verified per-device HID differences can be handled without global keycode guesses. Repeat and deduplication state must be scoped per physical device, so an action from one controller cannot suppress a nearby intentional action from another. This keeps selection/confirmation separate from terminal Enter, distinguishes Backspace from forward delete, preserves printable characters and modifiers, and prevents local UI input from leaking into the remote PTY. Every real control will first be profiled with raw key-event diagnostics, including ring controls, Shutter/Capture, Function, microphone, and future DJI Mic 2 controls.
+- 输入行：`❯` 提示符 + 闪烁 `_` 光标，无深色背景。
+- 对话区用户消息（实屏与历史）：小方框标记 + 深色背景块。
+- 对话/输出用 SGR 背景色区分（历史行自动推断填充）。
 
-The basic glasses-only composer flow is implemented: TP single-click opens it and toggles recording, left/right moves a Unicode-grapheme cursor, Shutter deletes the preceding grapheme immediately, long press sends, and double-click or Android Back discards the unsent draft. TP single-click never deletes. Bluetooth `KEYCODE_DEL` remains a second Backspace path. Remote terminal frames continue updating behind the overlay, and compact interaction hints appear below the draft. On the current firmware, long-press and Shutter never arrive as KeyEvents — they are intercepted as ordered system broadcasts (`.docs/ROKID_INPUT_INTERACTIONS.md` §8) and were verified 2026-08-05: long-press sends and Shutter deletes without launching the system assistant or camera.
-
-Claude `/` commands should first use a local command palette that inserts the selected `/command` into the draft. This is safer than immediately entering Claude's live slash menu because cancelling the local palette cannot leave hidden text in the PTY. The keyboard `/` can open the palette at command-prefix position while remaining a literal slash elsewhere.
-
-The composer should remain usable while Claude is busy so another instruction can be prepared and sent to the same PTY. Claude's native type-ahead/queue behavior must be tested against the exact server version before the UI promises queue ordering or a queue count. Cancelling removes only an unsent local draft; input already written to the PTY cannot be safely retracted by the app. A future app-owned queue requires an explicit structured busy/ready signal rather than scraping Claude's terminal output.
-
-See [`rules/input.md`](rules/input.md) for the input architecture, semantic action model, interaction-state matrix, and combined glasses/ring/keyboard hardware tests, and [`rules/composer.md`](rules/composer.md) for the composer lifecycle, ASR partial-result rules, slash-command design, and queue verification plan.
-
-## Voice input status
-
-Verified 2026-08-05: the glasses record 16 kHz mono PCM in memory (never to disk), stream it over the authenticated `asr-fwd` SSH forward to the server-side SenseVoice service, and insert the returned text into the composer draft at the cursor. The draft is sent to Claude only on explicit long-press confirmation. The ordinary Android `SpeechRecognizer` service is unavailable on this firmware.
-
-A future option is Rokid AIUI or LocalSkill system ASR bridged into the SSH session. Do not treat arbitrary speech as a shell command. Speech must remain Claude input and must be confirmed before transmission.
-
-## Build
+## 构建 & 部署
 
 ```bash
-chmod +x dev.sh gradlew
-./dev.sh build
-./dev.sh run
+./dev.sh build   # 构建 debug APK
+./dev.sh run     # 构建 → 安装 → 启动
+./dev.sh log     # 实时日志
 ```
 
-The project uses the same Gradle 8.2 wrapper as the sibling Rokid Android apps.
-
-## Connection targets and device provisioning
-
-Each server target has its own profile and dedicated 3072-bit RSA SSH identity. A profile contains a display name, host, port, restricted Linux user, trusted SSH host key, workspace, and tmux session name. Its private key is encrypted with an Android Keystore AES-GCM key and remains in app-private storage.
-
-The MVP uses trusted ADB file provisioning. This avoids typing network addresses and long host keys on the glasses. The exported launcher does not accept connection settings through Intent extras. ADB places a JSON profile in app-private storage via `run-as`; the app imports it once and immediately deletes it. A later pairing screen can import the same profile format from a QR code.
-
-Create a local JSON file for the public cloud target. This file contains no private key or Claude credential, but it should still stay outside Git:
-
-```json
-{
-  "action": "upsert",
-  "id": "cloud",
-  "name": "Tencent Cloud",
-  "host": "SERVER_IP_OR_DOMAIN",
-  "port": 22,
-  "user": "rokid",
-  "knownHost": "SERVER ssh-ed25519 AAAA...",
-  "workspace": "/srv/projects/myWorld",
-  "sessionName": "cloud-claude"
-}
-```
-
-Import it:
+单元测试（终端解析器/渲染策略/滚动捕获回归）：
 
 ```bash
-./dev.sh import-profile /absolute/path/to/cloud.json
+export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
+export ANDROID_HOME="$HOME/Library/Android/sdk"
+./gradlew testDebugUnitTest assembleDebug
 ```
 
-Use the same JSON shape to add another remote development server, changing `id`, `name`, `host`, `knownHost`, `workspace`, and `sessionName`.
+## 安全约束
 
-The app immediately generates that target's key. For a debug build, read only its public key with:
+- 不提交/不记录任何服务器密码、私钥、API 密钥或 Claude 凭据。
+- 私钥存于 app 私有存储，Android Keystore AES-GCM 加密；禁止放 `/sdcard`。
+- 严格主机认证（固定 ED25519 主机密钥），无 TOFU/「接受任意主机」回退。
+- 服务器账号为非特权 `rokid` 用户（无 sudo、非 docker 等特权组），authorized_keys 带限制。
+- 语音文本必须先显示为草稿、显式确认后才发送，不做任意语音→shell 执行。
+- 日志中不输出草稿文本、识别文本、终端正文或源码。
+- `FLAG_SECURE` 发布前恢复。
 
-```bash
-./dev.sh public-key cloud
-```
+## 服务端 ASR（third_party/asr-server）
 
-Add each public key to the matching server's restricted `rokid` account at `~/.ssh/authorized_keys`. Never copy an administrator private key to the glasses.
+FastAPI + SenseVoiceSmall 的服务端语音识别，作为 RokidTerm 组件维护（非独立仓库）。仅在 127.0.0.1 绑定，由受限 `asr-fwd` SSH 账号转发；识别结果不落盘、不记录转写日志。详见其目录内 `CLAUDE.md`。
 
-`ssh_known_host` must be the complete `known_hosts` line obtained through an independently trusted channel, not a fingerprint accepted from the first network connection. Every target maintains its own host trust and device identity.
+## 已知限制 / 待办
 
-Delete a target and its device key by importing:
-
-```json
-{
-  "action": "delete",
-  "id": "old-server"
-}
-```
-
-Deleting the local profile does not edit the remote account. Also remove that target's public key line from the matching `~/.ssh/authorized_keys` file so the deleted credential is fully revoked.
-
-Profiles are stored in the app's private `SharedPreferences`. Reinstalling with `adb install -r` preserves them; uninstalling clears all profiles and device keys.
-
-## Server prerequisites
-
-Every target user needs `tmux`, `claude`, the validated `/home/rokid/bin/rokid-claude` credential wrapper, and access to its selected workspace. The remote command is equivalent to:
-
-```bash
-(tmux has-session -t rokid-claude 2>/dev/null || tmux new-session -d -s rokid-claude -c '/srv/projects/myWorld' /home/rokid/bin/rokid-claude --effort max --dangerously-skip-permissions) && tmux set-option ... && exec tmux attach-session -t rokid-claude
-```
-
-The app refreshes a compact tmux status layout on every connection so the 46-column display retains the full session name and does not show tmux truncation markers such as `<lau>`. The launcher path, `--effort max`, and `--dangerously-skip-permissions` startup arguments are fixed in the APK and cannot be replaced by an imported endpoint profile. These arguments apply only when tmux creates a new Claude process; attaching to an existing tmux session preserves that process's current effort and permission mode. The wrapper must pass through command-line arguments and validate its private environment file.
-
-Keep dedicated `rokid` accounts unprivileged. RokidTerminal rejects common administrator usernames including `root`, `ubuntu`, `admin`, `administrator`, and `ec2-user`. Do not add `rokid` to `sudo` or `docker` unless a later capability is explicitly designed and approved.
-
-## Known hardware behaviors
-
-- `DREAMS_CAST` is managed by Rokid system/companion components. The Wi-Fi interface may keep its local IP while Android temporarily removes the validated default network and public route.
-- `ENETUNREACH` means the Wi-Fi/default route is unavailable; it is not an SSH key failure. Retry after Android reports a validated default network.
-- USB/ADB is less stable through hubs or adapters. A direct Mac USB-C connection is preferred.
-- ADB-injected key events are intermittent unless the display is awake and the Activity is actually resumed.
-- tmux sessions are owned by `rokid`. From an admin shell, inspect them with `sudo -iu rokid tmux ls`.
-- Installing an APK with `adb install -r` disconnects SSH but preserves the endpoint profile, encrypted identity, and server-side tmux session.
-
-For implementation constraints and security invariants, read `AGENTS.md` or `CLAUDE.md` before editing.
+- 会话恢复（`claude --resume` 会话列表选择）未实现。
+- 命令面板（composer 键 1 / `/` 前缀 / 快门双击 / 触控板长按）未实现。
+- 发布前：恢复 `FLAG_SECURE`、release 清理、移除调试路径。

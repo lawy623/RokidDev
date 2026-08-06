@@ -7,11 +7,14 @@ AR 眼镜应用开发 monorepo，面向 [Rokid Glass](https://rokid.github.io/gl
 ```
 RokidDev/
 ├── README.md           ← 本文件
-├── .docs/              ← 离线开发文档（Glass SDK、AIUI 框架）
+├── CLAUDE.md           ← 共享 Rokid 开发知识（硬件交互、构建管线、安全约束）
+├── .docs/              ← 离线开发文档（Glass SDK、AIUI 框架、社区参考索引）
 ├── RokidGame/          ← 头部控制的 Flappy Bird 游戏
 ├── RokidMusic/         ← 电吉他六线谱阅读器 & 播放器
-└── samples/            ← 第三方示例项目（不纳入版本管理）
+└── RokidTerm/          ← 远程 Claude Code 终端客户端（SSH + tmux + 服务端 ASR）
 ```
+
+> `RokidLocalAsr/`（过时的眼镜端 ASR 测试应用）仅保留在本地磁盘，不纳入版本管理。
 
 ## 子项目一览
 
@@ -19,6 +22,7 @@ RokidDev/
 |---|---|---|---|
 | **[RokidGame](./RokidGame/)** | Flappy Bird 克隆 — 点头控制小鸟飞越水管 | 头部 IMU（点头）+ 触摸板 | ✅ 可玩 |
 | **[RokidMusic](./RokidMusic/)** | 电吉他 Tab 谱阅读/播放/编辑，支持手机 WiFi 传谱 | 触摸板 + 手机浏览器 | ✅ 核心功能完成 |
+| **[RokidTerm](./RokidTerm/)** | 远程 Claude Code 终端：SSH 直连 + tmux 会话恢复 + 本地 composer + 服务端 ASR（SenseVoice） | 触摸板 + COIDEA 键盘 + INMO Ring4 | ✅ 日常可用（语音输入已验证） |
 
 ## 开发前置条件
 
