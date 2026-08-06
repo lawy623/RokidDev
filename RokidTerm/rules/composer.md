@@ -130,7 +130,44 @@ arbitration.
 
 ## Slash commands and busy-session follow-ups
 
-### Recommended first implementation: local command palette
+### Implemented: local command palette (2026-08-06)
+
+`OpenCommandPalette` is a local semantic action (state in
+`CommandPaletteState`, rendering in `TerminalView.drawCommandPaletteList`):
+
+1. Opens a compact local list of frequently used Claude commands.
+2. Navigate the list using verified directional gestures or keyboard arrows.
+3. Selecting an item inserts `/command` into the local composer.
+4. The user may continue editing or dictating arguments.
+5. Long press sends the completed command through the normal composer send
+   path.
+6. Cancelling the palette changes no remote PTY state.
+
+Triggers (all composer mode): COIDEA key 1, Rokid Shutter double press,
+Ring long-press (HOME), and typed `/` at command-prefix position (blank
+before the cursor). `/` elsewhere is a literal slash. Cancelling a
+`/`-opened palette restores the literal slash into the draft (Escape-like).
+
+Navigation while open: COIDEA keys 2/5, TP up/down swipes, Ring left/right
+swipes (right = next). Confirm: left knob single, TP single click, Ring
+touchpad single. Cancel: right knob single, Back, key 1 again.
+
+List source: local defaults (the FULL known built-in set, ~42 commands
+sorted alphabetically with a bare `/` as the first item — confirming it
+inserts only `/` so voice input can continue the command name; merged with
+server customs in sorted order), `COMMAND_PALETTE_DEFAULTS`
+plus a one-shot server fetch — `ServerCommandFetcher` runs the helper
+`/home/rokid/bin/rokid-commands` (see `server/rokid-commands` in the repo)
+over a short-lived SSH exec channel; the helper lists CUSTOM commands by
+file enumeration of the Claude command/skill directories (structured data,
+never scraped pixels). Fetched once per connection with the local list as
+fallback; the UI never claims completeness.
+
+The `OpenCommandPalette` entry rule from 2026-08-05 is confirmed; the
+server-assisted list source is now implemented. The optional live remote
+slash mode below remains future work.
+
+### Recommended first implementation: local command palette (original spec)
 
 Add `OpenCommandPalette` as a local semantic action:
 

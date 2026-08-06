@@ -110,6 +110,17 @@ class TerminalView(context: Context) : View(context) {
     private var composerVisible = false
     private var composerText = ""
     private var composerCursor = 0
+    private var commandPaletteOpen = false
+    private var commandPaletteItems: List<String> = emptyList()
+    private var commandPaletteSelected = 0
+
+    /** Command palette state for the composer overlay (modal list). */
+    fun setCommandPalette(items: List<String>, selected: Int, open: Boolean) {
+        commandPaletteOpen = open
+        commandPaletteItems = items
+        commandPaletteSelected = selected
+        invalidate()
+    }
 
     /** Current composer cursor (for pixel-based vertical moves). */
     fun composerCursor(): Int = composerCursor
@@ -365,6 +376,63 @@ class TerminalView(context: Context) : View(context) {
     }
 
     /**
+     * Detects the open picker's primary axis from the frame content:
+     * numbered option rows ("1. ", "2. ", …) above the input line mean a
+     * VERTICAL list (e.g. /model); anything else (e.g. /effort's "←/→ to
+     * adjust" slider, or the first level of a 2D picker like /usage) is
+     * HORIZONTAL. Used to adapt the glasses'/ring's single swipe gesture to
+     * the picker's axis (user decision 2026-08-06).
+     */
+    fun pickerAxis(): PickerAxis {
+        val frame = terminalFrame
+        if (frame == null || frame.rows <= 0 || frame.cells.isEmpty()) return PickerAxis.HORIZONTAL
+        val inputRow = findInputRow() ?: (frame.rows - 2)
+        val start = (inputRow - 12).coerceAtLeast(0)
+        val end = inputRow.coerceAtMost(frame.cells.size)
+        var numberedRows = 0
+        for (row in start until end) {
+            if (NUMBERED_ITEM.containsMatchIn(rowText(row))) numberedRows++
+        }
+        return if (numberedRows >= 2) PickerAxis.VERTICAL else PickerAxis.HORIZONTAL
+    }
+
+    enum class PickerAxis { VERTICAL, HORIZONTAL }
+
+    /**
+     * Bounce direction for a glasses swipe when the picker focus sits off
+     * the numbered item list (e.g. /model's "◈ Max effort ←/→ to adjust"
+     * slider at the bottom or the header at the top): +1 = send down (focus
+     * above the list), -1 = send up (focus below the list), null = the
+     * focus is on a numbered item (or no vertical list detected).
+     */
+    fun pickerBounceDirection(): Int? {
+        val frame = terminalFrame ?: return null
+        val inputRow = findInputRow() ?: (frame.rows - 2)
+        val start = (inputRow - 14).coerceAtLeast(0)
+        // Include the focused row itself: while the picker is open the
+        // "input row" IS the focus marker (e.g. the effort slider row when
+        // the selection wrapped there), and it must be inspected to bounce.
+        val end = (inputRow + 1).coerceAtMost(frame.cells.size)
+        var focusedRow = -1
+        var firstItem = -1
+        var lastItem = -1
+        for (row in start until end) {
+            val text = rowText(row)
+            if (text.trimStart().startsWith("❯")) focusedRow = row
+            if (NUMBERED_ITEM.containsMatchIn(text)) {
+                if (firstItem < 0) firstItem = row
+                lastItem = row
+            }
+        }
+        if (focusedRow < 0 || firstItem < 0) return null
+        return when {
+            focusedRow < firstItem -> 1
+            focusedRow > lastItem -> -1
+            else -> null
+        }
+    }
+
+    /**
      * Grid row of the Claude Code input line ("❯ …"), or null. Claude also
      * renders CONVERSATION user messages with a "❯" prefix, so the input
      * line cannot be found by "last ❯ row" alone — prefer the bottom area
@@ -610,7 +678,12 @@ class TerminalView(context: Context) : View(context) {
         val right = width - 24f
         val bottom = height - TerminalSpec.FOOTER_HEIGHT - 8f
         val availableHeight = (bottom - TerminalSpec.TERMINAL_TOP - 12f).coerceAtLeast(1f)
-        val composerHeight = min(260f, availableHeight).coerceAtLeast(190f)
+        // The command palette gets a taller overlay so the list has room.
+        val composerHeight = if (commandPaletteOpen) {
+            min(430f, availableHeight).coerceAtLeast(280f)
+        } else {
+            min(260f, availableHeight).coerceAtLeast(190f)
+        }
         val top = bottom - composerHeight
 
         paint.style = Paint.Style.FILL
@@ -627,13 +700,23 @@ class TerminalView(context: Context) : View(context) {
         resetPaint()
         paint.isFakeBoldText = true
         paint.textSize = 16f
-        canvas.drawText("LOCAL INPUT", left + 12f, top + 24f, paint)
+        canvas.drawText(
+            if (commandPaletteOpen) "COMMANDS / UP-DOWN SELECT" else "LOCAL INPUT",
+            left + 12f,
+            top + 24f,
+            paint,
+        )
 
         paint.isFakeBoldText = false
         paint.alpha = 180
         paint.textSize = 11f
         canvas.drawText(composerStatus.take(54), left + 12f, top + 43f, paint)
         canvas.drawLine(left + 10f, top + 54f, right - 10f, top + 54f, paint)
+
+        if (commandPaletteOpen) {
+            drawCommandPaletteList(canvas, left, right, top, bottom)
+            return
+        }
 
         paint.alpha = 255
         paint.textSize = 16f
@@ -699,6 +782,71 @@ class TerminalView(context: Context) : View(context) {
         canvas.drawLine(left + 10f, bottom - 60f, right - 10f, bottom - 60f, paint)
         canvas.drawText("LEFT/RIGHT CURSOR   SHUTTER DELETE", left + 12f, bottom - 36f, paint)
         canvas.drawText("HOLD SEND   DOUBLE/BACK CANCEL", left + 12f, bottom - 15f, paint)
+        resetPaint()
+    }
+
+    /**
+     * /skills-style command list inside the composer overlay: selected item
+     * highlighted, hint lines at the bottom. Modal — the draft is hidden
+     * while the palette is open and reappears on close/confirm.
+     */
+    private fun drawCommandPaletteList(
+        canvas: Canvas,
+        left: Float,
+        right: Float,
+        top: Float,
+        bottom: Float,
+    ) {
+        val listLeft = left + 12f
+        val listTop = top + 64f
+        val rowHeight = 22f
+        val rowWidth = right - left - 34f
+        val visible = minOf(commandPaletteItems.size, 12)
+        // The visible window follows the selection so every command is
+        // reachable even when the list is longer than the panel.
+        val windowStart = (commandPaletteSelected - visible / 2)
+            .coerceIn(0, (commandPaletteItems.size - visible).coerceAtLeast(0))
+
+        paint.textSize = 16f
+        for (i in 0 until visible) {
+            val itemIndex = windowStart + i
+            val rowTop = listTop + i * rowHeight
+            val item = commandPaletteItems[itemIndex]
+            if (itemIndex == commandPaletteSelected) {
+                paint.style = Paint.Style.FILL
+                paint.color = Color.GREEN
+                paint.alpha = 90
+                canvas.drawRect(listLeft - 4f, rowTop, right - 14f, rowTop + rowHeight, paint)
+                paint.alpha = 255
+            } else {
+                paint.alpha = 230
+            }
+            paint.style = Paint.Style.FILL
+            val text = if (paint.measureText(item) > rowWidth) item.take(12) + "…" else item
+            canvas.drawText(text, listLeft, rowTop + 17f, paint)
+        }
+
+        // Scrollbar when the list overflows the visible window.
+        if (commandPaletteItems.size > visible) {
+            val trackTop = listTop + 2f
+            val trackBottom = listTop + visible * rowHeight - 2f
+            val trackHeight = (trackBottom - trackTop).coerceAtLeast(1f)
+            val thumbHeight = (trackHeight * visible / commandPaletteItems.size).coerceIn(14f, trackHeight)
+            val maxStart = (commandPaletteItems.size - visible).coerceAtLeast(1)
+            val thumbTop = trackTop + (trackHeight - thumbHeight) * windowStart / maxStart
+            paint.style = Paint.Style.FILL
+            paint.color = Color.GREEN
+            paint.alpha = 65
+            canvas.drawRect(right - 12f, trackTop, right - 10f, trackBottom, paint)
+            paint.alpha = 210
+            canvas.drawRect(right - 13f, thumbTop, right - 9f, thumbTop + thumbHeight, paint)
+        }
+
+        paint.alpha = 175
+        paint.textSize = 11f
+        canvas.drawLine(left + 10f, bottom - 60f, right - 10f, bottom - 60f, paint)
+        canvas.drawText("UP/DOWN SELECT   CONFIRM INSERT", left + 12f, bottom - 36f, paint)
+        canvas.drawText("BACK / KNOB-R CANCEL", left + 12f, bottom - 15f, paint)
         resetPaint()
     }
 
@@ -791,5 +939,9 @@ class TerminalView(context: Context) : View(context) {
         paint.color = Color.GREEN
         paint.alpha = 255
         paint.isFakeBoldText = false
+    }
+
+    companion object {
+        private val NUMBERED_ITEM = Regex("""\d\.""")
     }
 }

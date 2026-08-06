@@ -58,6 +58,12 @@ class MainActivity : Activity() {
     private val terminalFrameScheduled = AtomicBoolean(false)
     private var lastSuggestion: String? = null
 
+    private val palette = CommandPaletteState()
+    private var paletteOpenedBySlash = false
+    private var paletteFetchInFlight = false
+    private var paletteFetchDone = false
+    private var commandFetcher: ServerCommandFetcher? = null
+
     private var lastScrollbackCount = -1
 
     private val drainTerminalFrame = Runnable {
@@ -75,6 +81,11 @@ class MainActivity : Activity() {
             lastSuggestion = suggestion
             inputHistory.setSuggestion(suggestion)
         }
+        // (Panel mode has NO auto-exit: the input-line signal proved
+        // unreliable with two-level pickers like /usage, where the line
+        // clears transiently during row switches — it exited panel mode
+        // mid-interaction. Panel mode ends only on explicit cancel.
+        // 2026-08-06.)
         terminalFrameScheduled.set(false)
         if (pendingTerminalFrame.get() != null) scheduleTerminalFrame()
     }
@@ -286,10 +297,16 @@ class MainActivity : Activity() {
             ACTION_LONG_PRESS -> {
                 if (mode == Mode.COMPOSER) {
                     sendComposer()
+                } else if (panelMode) {
+                    // Part 3: TP long press = confirm (Enter).
+                    if (sshState == "CONNECTED") ssh.sendEnter()
                 } else {
-                    // Terminal mode: fill Claude's suggested next input as a
-                    // preview (never sends directly).
-                    fillSuggestion()
+                    // Terminal mode: send ESC — the glasses' cancel/escape
+                    // gesture (closes Claude's own pickers/menus; this
+                    // firmware delivers the long press as a broadcast, so
+                    // KEYCODE_TV never fires). The suggestion fill moved to
+                    // the ring long press (2026-08-06).
+                    if (sshState == "CONNECTED") ssh.sendEscape()
                 }
             }
             ACTION_SHUTTER -> {
@@ -298,10 +315,12 @@ class MainActivity : Activity() {
                     // an arbitration window, contract); a second press within
                     // 500 ms = command palette (placeholder, not implemented).
                     handleComposerShutterPress()
-                } else {
+                } else if (!panelMode) {
                     // Terminal mode: single press = ctrl+c to the PTY,
                     // double press = return to live/bottom (offset -> 0).
                     // Same 500 ms window as the COIDEA right knob (contract).
+                    // Blocked entirely while the panel is open (strict
+                    // isolation — only nav/confirm/cancel act there).
                     handleTerminalShutterPress()
                 }
             }
@@ -430,6 +449,8 @@ class MainActivity : Activity() {
     private fun isRingKey(event: KeyEvent): Boolean =
         event.device?.name?.contains("INMO") == true
 
+    private fun isRingEvent(event: KeyEvent): Boolean = isRingKey(event)
+
     /**
      * INMO Ring4 semantic dispatch (contract in rules/input.md). Touchpad
      * actions are distinct keys; the GO button is always KEY_F8 and is
@@ -473,7 +494,11 @@ class MainActivity : Activity() {
     private fun handleRingComposerKey(keyCode: Int, event: KeyEvent): Boolean {
         when (keyCode) {
             KeyEvent.KEYCODE_ENTER -> {
-                if (event.repeatCount == 0) startSpeech()
+                // Ring touchpad single: confirm the palette when open,
+                // otherwise start/toggle listening.
+                if (event.repeatCount == 0) {
+                    if (palette.open) confirmPaletteSelection() else startSpeech()
+                }
                 return true
             }
             KeyEvent.KEYCODE_DEL -> {
@@ -487,18 +512,34 @@ class MainActivity : Activity() {
             // Same inversion correction as terminal mode: left swipe reports
             // DPAD_RIGHT but must move the cursor left.
             KeyEvent.KEYCODE_DPAD_LEFT -> {
+                // Palette open: right-swipe (arrives as LEFT) = next item.
+                if (palette.open) {
+                    paletteMove(1)
+                    return true
+                }
                 prepareManualComposerEdit()
                 composer.moveRight()
                 refreshComposer("EDITING / CLICK TO LISTEN")
                 return true
             }
             KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                // Palette open: left-swipe (arrives as RIGHT) = previous item.
+                if (palette.open) {
+                    paletteMove(-1)
+                    return true
+                }
                 prepareManualComposerEdit()
                 composer.moveLeft()
                 refreshComposer("EDITING / CLICK TO LISTEN")
                 return true
             }
-            KeyEvent.KEYCODE_HOME -> return true // command palette placeholder
+            KeyEvent.KEYCODE_HOME -> {
+                // Ring touchpad long press in composer = send (swapped with
+                // GO single, user decision 2026-08-06 — matches the Rokid TP
+                // long-press send).
+                if (event.repeatCount == 0) sendComposer()
+                return true
+            }
             KeyEvent.KEYCODE_F8 -> {
                 handleGoKey(event)
                 return true
@@ -524,24 +565,39 @@ class MainActivity : Activity() {
             KeyEvent.ACTION_UP -> {
                 val hold = android.os.SystemClock.uptimeMillis() - goKeyDownTime
                 if (hold >= GO_LONG_PRESS_MS) {
-                    if (mode == Mode.TERMINAL && sshState == "CONNECTED") ssh.sendCharacters("")
+                    // Long press: ctrl+c normally; blocked in panel mode
+                    // (strict isolation — GO single is the panel cancel).
+                    if (mode == Mode.TERMINAL && !panelMode && sshState == "CONNECTED") {
+                        ssh.sendCharacters("")
+                    }
                     return
                 }
                 val pending = goDoublePending
                 if (pending != null) {
                     mainHandler.removeCallbacks(pending)
                     goDoublePending = null
-                    if (mode == Mode.TERMINAL) {
-                        ssh.disconnect()
-                        asr.disconnect()
-                        showEndpointPicker()
-                    } else if (mode == Mode.COMPOSER) {
-                        cancelComposer("CANCELLED")
+                    when {
+                        mode == Mode.TERMINAL && panelMode -> {
+                            // Part 3: GO double = cancel & return (ESC + exit).
+                            ssh.sendEscape()
+                            cancelPanelMode()
+                        }
+                        mode == Mode.TERMINAL -> {
+                            ssh.disconnect()
+                            asr.disconnect()
+                            showEndpointPicker()
+                        }
+                        mode == Mode.COMPOSER -> cancelComposer("CANCELLED")
                     }
                 } else {
                     val single = Runnable {
                         goDoublePending = null
-                        if (mode == Mode.COMPOSER) sendComposer()
+                        if (mode == Mode.COMPOSER) {
+                            // Composer: GO single = command palette (swapped
+                            // with touchpad long press, user decision
+                            // 2026-08-06). GO single is blocked in panel mode.
+                            toggleCommandPalette()
+                        }
                     }
                     goDoublePending = single
                     mainHandler.postDelayed(single, RIGHT_KNOB_DOUBLE_WINDOW_MS)
@@ -622,6 +678,12 @@ class MainActivity : Activity() {
     }
 
     private fun handleTerminalKey(keyCode: Int, event: KeyEvent): Boolean {
+        // Part 3 (command panel): while Claude's own picker/menu is open the
+        // directional/confirm/cancel keys pass through to the PTY instead of
+        // browsing local history or acting on the terminal.
+        if (panelMode) {
+            if (handlePanelKey(keyCode, event)) return true
+        }
         if (isCoideaKey(event) && handleCoideaTerminalKey(keyCode, event)) return true
         if (isRingKey(event) && handleRingTerminalKey(keyCode, event)) return true
         when (keyCode) {
@@ -718,11 +780,34 @@ class MainActivity : Activity() {
                 return true
             }
             KeyEvent.KEYCODE_1 -> {
-                // Command palette trigger — palette not implemented yet.
+                // Command palette trigger (contract: composer key 1).
+                if (event.repeatCount == 0) toggleCommandPalette()
                 return true
             }
         }
         return false
+    }
+
+    private fun handleCoideaPaletteKey(keyCode: Int, event: KeyEvent): Boolean = when (keyCode) {
+        KeyEvent.KEYCODE_2 -> {
+            paletteMove(-1)
+            true
+        }
+        KeyEvent.KEYCODE_5 -> {
+            paletteMove(1)
+            true
+        }
+        KeyEvent.KEYCODE_8 -> {
+            // Left knob (confirm side): while the palette is open it confirms
+            // the selection instead of toggling recording.
+            if (event.repeatCount == 0) confirmPaletteSelection()
+            true
+        }
+        KeyEvent.KEYCODE_D -> {
+            if (event.repeatCount == 0) cancelCommandPalette()
+            true
+        }
+        else -> false
     }
 
     private var pendingRightKnobSingle: Runnable? = null
@@ -740,7 +825,7 @@ class MainActivity : Activity() {
         if (pending != null) {
             mainHandler.removeCallbacks(pending)
             composerShutterDoublePending = null
-            android.widget.Toast.makeText(this, "命令面板(待实现)", android.widget.Toast.LENGTH_SHORT).show()
+            toggleCommandPalette()
             return
         }
         prepareManualComposerEdit()
@@ -806,23 +891,30 @@ class MainActivity : Activity() {
     }
 
     private fun handleComposerKey(keyCode: Int, event: KeyEvent): Boolean {
-        if (isCoideaKey(event) && handleCoideaComposerKey(keyCode, event)) return true
+        if (isCoideaKey(event)) {
+            // While the palette is open, COIDEA keys drive the list modally.
+            if (palette.open && handleCoideaPaletteKey(keyCode, event)) return true
+            if (handleCoideaComposerKey(keyCode, event)) return true
+        }
         if (isRingKey(event) && handleRingComposerKey(keyCode, event)) return true
         when (keyCode) {
             KeyEvent.KEYCODE_DPAD_LEFT -> {
+                if (palette.open) return true
                 prepareManualComposerEdit()
                 composer.moveLeft()
                 refreshComposer("EDITING / CLICK TO LISTEN")
                 return true
             }
             KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                if (palette.open) return true
                 prepareManualComposerEdit()
                 composer.moveRight()
                 refreshComposer("EDITING / CLICK TO LISTEN")
                 return true
             }
             KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN -> {
-                // Reserved for the future command palette. Never leak to the PTY.
+                // TP swipe: palette navigation when open, otherwise reserved.
+                paletteMove(if (keyCode == KeyEvent.KEYCODE_DPAD_UP) -1 else 1)
                 return true
             }
             KeyEvent.KEYCODE_DEL -> {
@@ -850,7 +942,7 @@ class MainActivity : Activity() {
                 return true
             }
             KeyEvent.KEYCODE_BACK -> {
-                cancelComposer("CANCELLED")
+                if (palette.open) cancelCommandPalette() else cancelComposer("CANCELLED")
                 return true
             }
             KeyEvent.KEYCODE_TV -> {
@@ -860,9 +952,15 @@ class MainActivity : Activity() {
             }
         }
         if (event.repeatCount == 0) {
-            printableText(event)?.let {
+            printableText(event)?.let { value ->
+                // "/" at command-prefix position (blank before the cursor)
+                // opens the palette; elsewhere it is a literal slash.
+                if (value == "/" && composer.text.take(composer.cursor).isBlank()) {
+                    openCommandPaletteFromSlash()
+                    return true
+                }
                 prepareManualComposerEdit()
-                composer.insertText(it)
+                composer.insertText(value)
                 refreshComposer("EDITING / CLICK TO LISTEN")
                 return true
             }
@@ -918,23 +1016,36 @@ class MainActivity : Activity() {
     private fun handlePrimarySingleClick() {
         when (mode) {
             Mode.TERMINAL -> {
-                if (sshState.startsWith("ERROR") || sshState == "DISCONNECTED") {
+                if (panelMode) {
+                    // Strict isolation: TP single does nothing while the
+                    // panel is open (confirm = TP long, cancel = TP double).
+                } else if (sshState.startsWith("ERROR") || sshState == "DISCONNECTED") {
                     reconnectActiveEndpoint()
                 } else {
                     openComposer()
                 }
             }
-            Mode.COMPOSER -> startSpeech()
+            Mode.COMPOSER -> {
+                if (palette.open) confirmPaletteSelection() else startSpeech()
+            }
             Mode.ENDPOINTS -> Unit
         }
     }
 
     private fun handlePrimaryDoubleClick() {
-        if (mode == Mode.COMPOSER) cancelComposer("CANCELLED")
+        when {
+            mode == Mode.COMPOSER -> cancelComposer("CANCELLED")
+            mode == Mode.TERMINAL && panelMode -> {
+                // Part 3: TP double click = cancel & return (ESC + exit).
+                ssh.sendEscape()
+                cancelPanelMode()
+            }
+        }
     }
 
     private fun openComposer() {
         android.util.Log.i("RokidTerminal", "mode -> COMPOSER (openComposer)")
+        panelMode = false
         publishTerminalFrame(terminalOutput.returnToLive())
         speechDraft.reset()
         composer.clear()
@@ -973,9 +1084,18 @@ class MainActivity : Activity() {
         inputHistory.add(text)
         composer.clear()
         speechDraft.reset()
+        palette.close()
+        paletteOpenedBySlash = false
+        terminalView.setCommandPalette(emptyList(), 0, false)
         android.util.Log.i("RokidTerminal", "mode -> TERMINAL (sendComposer)")
         mode = Mode.TERMINAL
         terminalView.hideComposer()
+        // Slash commands open Claude's own picker (e.g. /model): enter the
+        // command panel passthrough so navigation keys reach it.
+        if (text.startsWith("/")) {
+            lastSentCommand = text.trim()
+            enterPanelMode()
+        }
         updateHeader()
         clearPrimaryGesture()
     }
@@ -989,6 +1109,9 @@ class MainActivity : Activity() {
         speechDraft.discardActive()
         composer.clear()
         speechDraft.reset()
+        palette.close()
+        paletteOpenedBySlash = false
+        terminalView.setCommandPalette(emptyList(), 0, false)
         android.util.Log.i("RokidTerminal", "mode -> TERMINAL (cancelComposer): $status")
         mode = Mode.TERMINAL
         terminalView.hideComposer()
@@ -1010,10 +1133,251 @@ class MainActivity : Activity() {
         terminalView.showComposer(composer.text, composer.cursor, composerStatus)
     }
 
+    // --- Command palette (contract in rules/composer.md) ---
+
+    private fun paletteSyncToView() {
+        terminalView.setCommandPalette(palette.items, palette.selectedIndex, palette.open)
+    }
+
+    private fun toggleCommandPalette() {
+        if (!palette.open) {
+            palette.open()
+            paletteOpenedBySlash = false
+            ensurePaletteCommands()
+            paletteSyncToView()
+        } else {
+            palette.close()
+            paletteSyncToView()
+        }
+    }
+
+    /** "/" typed at command-prefix position opens the palette (contract). */
+    private fun openCommandPaletteFromSlash() {
+        palette.open()
+        paletteOpenedBySlash = true
+        ensurePaletteCommands()
+        paletteSyncToView()
+    }
+
+    /** Confirms the selection: insert "/command " into the draft, close. */
+    private fun confirmPaletteSelection() {
+        val command = palette.select() ?: return
+        palette.close()
+        paletteOpenedBySlash = false
+        paletteSyncToView()
+        prepareManualComposerEdit()
+        // The bare "/" item keeps no trailing space so voice input can
+        // continue the command name right after the slash.
+        composer.insertText(if (command == "/") "/" else "$command ")
+        refreshComposer("EDITING / CLICK TO LISTEN")
+    }
+
+    /** Cancels without changing the draft; a "/"-opened palette restores the literal slash. */
+    private fun cancelCommandPalette() {
+        palette.close()
+        paletteSyncToView()
+        if (paletteOpenedBySlash) {
+            prepareManualComposerEdit()
+            composer.insertText("/")
+            refreshComposer("EDITING / CLICK TO LISTEN")
+        }
+        paletteOpenedBySlash = false
+    }
+
+    private fun paletteMove(delta: Int) {
+        if (!palette.open) return
+        palette.moveSelection(delta)
+        paletteSyncToView()
+    }
+
+    // --- Part 3: command panel passthrough (rules/input.md) ---
+    //
+    // After sending a "/"-command Claude opens its own picker/menu; the app
+    // switches to panel mode so up/down/confirm/cancel keys reach the PTY
+    // instead of browsing local history. Exited explicitly via right knob /
+    // Back (Back also sends ESC, canceling the picker).
+
+    private var panelMode = false
+
+    private fun enterPanelMode() {
+        if (mode != Mode.TERMINAL || panelMode) return
+        panelMode = true
+        android.util.Log.i("RokidTerminal", "mode -> PANEL (command panel passthrough)")
+        updateHeader()
+    }
+
+    private fun cancelPanelMode() {
+        if (!panelMode) return
+        panelMode = false
+        panelAxisSticky = null
+        panelAxisCommand = null
+        android.util.Log.i("RokidTerminal", "mode -> TERMINAL (panel exited)")
+        updateHeader()
+    }
+
+    /**
+     * Panel keys (user contract 2026-08-06): navigate = arrows, confirm =
+     * Enter, cancel = ESC + exit. Bindings: Rokid TP long = confirm, TP
+     * double = cancel; keyboard left knob single = confirm, right knob
+     * single = cancel; Ring touchpad long = confirm, GO single = cancel.
+     * Everything else is blocked while the panel is open.
+     */
+    private fun handlePanelKey(keyCode: Int, event: KeyEvent): Boolean = when (keyCode) {
+        KeyEvent.KEYCODE_2 -> {
+            if (event.repeatCount == 0) ssh.sendArrowUp()
+            true
+        }
+        KeyEvent.KEYCODE_5 -> {
+            if (event.repeatCount == 0) ssh.sendArrowDown()
+            true
+        }
+        KeyEvent.KEYCODE_4 -> {
+            if (event.repeatCount == 0) ssh.sendArrowLeft()
+            true
+        }
+        KeyEvent.KEYCODE_6 -> {
+            if (event.repeatCount == 0) ssh.sendArrowRight()
+            true
+        }
+        KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN,
+        KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> {
+            // The glasses'/ring's single swipe gesture adapts to the
+            // picker's detected axis (user decision 2026-08-06): vertical
+            // lists (/model) — up/left = up, down/right = down; horizontal
+            // pickers (/effort slider, /usage first level) — left/up =
+            // left, right/down = right. Keyboard keeps full 2D control.
+            if (event.repeatCount == 0) sendPanelSwipe(keyCode, event)
+            true
+        }
+        KeyEvent.KEYCODE_8 -> {
+            // Left knob single = confirm (Enter).
+            if (event.repeatCount == 0) ssh.sendEnter()
+            true
+        }
+        KeyEvent.KEYCODE_HOME -> {
+            // Ring touchpad long press = confirm (Enter).
+            if (event.repeatCount == 0) ssh.sendEnter()
+            true
+        }
+        KeyEvent.KEYCODE_D -> {
+            // Right knob single = cancel & return (ESC + exit).
+            if (event.repeatCount == 0) {
+                ssh.sendEscape()
+                cancelPanelMode()
+            }
+            true
+        }
+        KeyEvent.KEYCODE_BACK -> {
+            // Back = ESC to the PTY (cancel the picker) + leave panel mode.
+            if (event.repeatCount == 0) {
+                ssh.sendEscape()
+                cancelPanelMode()
+            }
+            true
+        }
+        else -> true // strict isolation: nothing else acts while the panel is open
+    }
+
+    private var lastPanelArrow: String? = null
+    private var lastPanelArrowTime = 0L
+    private var panelAxisSticky: TerminalView.PickerAxis? = null
+    private var panelAxisCommand: String? = null
+    private var lastSentCommand: String? = null
+
+    /**
+     * Maps a glasses/ring swipe to the picker's detected axis. Vertical
+     * pickers: up/left = up, down/right = down. Horizontal pickers: left/up
+     * = left, right/down = right. Ring swipe arrivals are inverted, so its
+     * right-swipe (arrives as DPAD_LEFT) maps to "down" on a vertical picker
+     * and "right" on a horizontal one. Fast swipes emit DPAD pairs within a
+     * few ms — the same resulting arrow is deduped.
+     *
+     * The axis is detected ONCE per picker (keyed by the pending command on
+     * the input line) and kept sticky: /model's picker re-renders without
+     * the numbered rows once its effort slider is focused, which would flip
+     * a per-frame detection to horizontal mid-interaction (2026-08-06).
+     */
+    private fun sendPanelSwipe(keyCode: Int, event: KeyEvent) {
+        val ring = isRingEvent(event)
+        // Key the sticky axis on the SENT command: while the picker is open
+        // the input line is replaced by the focus marker, whose text changes
+        // on every move (e.g. "5. deepseek…" → "2. deepseek…") — keying on
+        // it would reset the axis mid-picker and flip to horizontal when the
+        // effort slider is focused (2026-08-06).
+        val command = lastSentCommand
+        if (panelAxisCommand != command) {
+            panelAxisSticky = terminalView.pickerAxis()
+            panelAxisCommand = command
+        }
+        val axis = panelAxisSticky ?: TerminalView.PickerAxis.HORIZONTAL
+        if (axis == TerminalView.PickerAxis.VERTICAL) {
+            // Keep the glasses inside the model list: bounce off the effort
+            // slider (below) and the header (above).
+            val bounce = terminalView.pickerBounceDirection()
+            if (bounce != null) {
+                if (bounce > 0) ssh.sendArrowDown() else ssh.sendArrowUp()
+                return
+            }
+        }
+        val arrow = when (axis) {
+            TerminalView.PickerAxis.VERTICAL -> {
+                val next = keyCode == KeyEvent.KEYCODE_DPAD_DOWN ||
+                    (ring && keyCode == KeyEvent.KEYCODE_DPAD_LEFT) ||
+                    (!ring && keyCode == KeyEvent.KEYCODE_DPAD_RIGHT)
+                if (next) ARROW_DOWN else ARROW_UP
+            }
+            TerminalView.PickerAxis.HORIZONTAL -> {
+                val right = keyCode == KeyEvent.KEYCODE_DPAD_RIGHT ||
+                    (ring && keyCode == KeyEvent.KEYCODE_DPAD_LEFT) ||
+                    (!ring && keyCode == KeyEvent.KEYCODE_DPAD_DOWN)
+                if (right) ARROW_RIGHT else ARROW_LEFT
+            }
+        }
+        val now = android.os.SystemClock.uptimeMillis()
+        if (arrow == lastPanelArrow && now - lastPanelArrowTime < SWIPE_PAIR_DEDUP_MS) return
+        lastPanelArrow = arrow
+        lastPanelArrowTime = now
+        when (arrow) {
+            ARROW_UP -> ssh.sendArrowUp()
+            ARROW_DOWN -> ssh.sendArrowDown()
+            ARROW_LEFT -> ssh.sendArrowLeft()
+            else -> ssh.sendArrowRight()
+        }
+    }
+
+    /**
+     * Loads the command list: local defaults immediately, then a one-shot
+     * server fetch (custom commands from the helper) merged in when it
+     * returns. Cached per connection; failures keep the local list.
+     */
+    private fun ensurePaletteCommands() {
+        if (palette.items.isEmpty()) palette.setItems(COMMAND_PALETTE_DEFAULTS)
+        if (paletteFetchDone || paletteFetchInFlight) return
+        val fetcher = commandFetcher ?: return
+        paletteFetchInFlight = true
+        Thread {
+            val remote = fetcher.fetch()
+            runOnUiThread {
+                paletteFetchInFlight = false
+                paletteFetchDone = true
+                if (remote != null && remote.isNotEmpty()) {
+                    palette.setItems((COMMAND_PALETTE_DEFAULTS + remote).distinct().sorted())
+                    if (palette.open) paletteSyncToView()
+                }
+            }
+        }.start()
+    }
+
     /** Compose the header status line from SSH + ASR channel state. */
     private fun updateHeader() {
         if (mode != Mode.TERMINAL) return
-        val status = if (asrStatus.isBlank()) sshState else "$sshState / $asrStatus"
+        val status = if (panelMode) {
+            "COMMAND PANEL / NAV CONFIRM CANCEL"
+        } else if (asrStatus.isBlank()) {
+            sshState
+        } else {
+            "$sshState / $asrStatus"
+        }
         terminalView.setState(status)
     }
 
@@ -1128,6 +1492,8 @@ class MainActivity : Activity() {
             terminalView.setState("KEY ERROR: ${error.message}")
             return
         }
+        commandFetcher = ServerCommandFetcher(endpoint, identity)
+        panelMode = false
         ssh.connect(endpoint, identity)
         asr.connect(endpoint)
     }
@@ -1249,6 +1615,34 @@ class MainActivity : Activity() {
          * In-memory browsing keeps the full 5000-row scrollback.
          */
         const val PERSISTED_SCROLLBACK_ROWS = 1000
+
+        /**
+         * Local fallback command list (contract: never claim completeness;
+         * the server helper adds custom commands when reachable).
+         */
+        /**
+         * Full known built-in command set (server `claude` list + commands
+         * verified in real use, 2026-08-06); the server helper adds custom
+         * commands/skills when reachable. The UI never claims completeness.
+         */
+        val COMMAND_PALETTE_DEFAULTS = listOf(
+            "/", "/add-dir", "/agents", "/bug", "/clear", "/codex", "/compact",
+            "/config", "/copy", "/cost", "/doctor", "/effort", "/expose",
+            "/export", "/fast", "/help", "/hooks", "/idle", "/init",
+            "/install-github-app", "/keybindings", "/login", "/logout", "/mcp",
+            "/memory", "/model", "/permissions", "/pr-comments",
+            "/release-notes", "/reset", "/resume", "/review", "/rewind",
+            "/shortcuts", "/skills", "/status", "/statusline",
+            "/terminal-setup", "/todos", "/update", "/usage", "/vim",
+            "/wall-clock",
+        )
+
+        /** Fast swipes emit DPAD pairs within a few ms; dedup the same arrow. */
+        private const val SWIPE_PAIR_DEDUP_MS = 120L
+        private const val ARROW_UP = "up"
+        private const val ARROW_DOWN = "down"
+        private const val ARROW_LEFT = "left"
+        private const val ARROW_RIGHT = "right"
 
         /** android.hardware.input.action.INPUT_DEVICE_CHANGED (not in this SDK's android.jar). */
         const val ACTION_INPUT_DEVICE_CHANGED = "android.hardware.input.action.INPUT_DEVICE_CHANGED"

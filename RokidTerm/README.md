@@ -2,7 +2,7 @@
 
 面向 Rokid Glass 的**远程 Claude Code 终端客户端**。App 通过 SSH 直连远程开发服务器，附着到命名 `tmux` 会话上运行 Claude Code（DeepSeek 凭据），把终端画面渲染到眼镜的绿色单色屏上。
 
-功能：真实发送/接收 Claude 对话、本地输入框（composer）、服务端语音输入（SenseVoice）、本地历史捕获与持久化、多输入设备支持。
+功能：真实发送/接收 Claude 对话、本地输入框（composer）、服务端语音输入（SenseVoice）、本地历史捕获与持久化、多输入设备支持、命令面板（动态命令列表）。
 
 ## 架构
 
@@ -96,5 +96,4 @@ FastAPI + SenseVoiceSmall 的服务端语音识别，作为 RokidTerm 组件维�
 ## 已知限制 / 待办
 
 - 会话恢复（`claude --resume` 会话列表选择）未实现。
-- 命令面板（composer 键 1 / `/` 前缀 / 快门双击 / 触控板长按）未实现。
 - 发布前：恢复 `FLAG_SECURE`、release 清理、移除调试路径。

@@ -275,11 +275,82 @@ implementation.
 | 2 | Recording toggle (start/stop + transcribe) | TP single click (verified) | Left knob single press (`KEY_8`) while composer open (500 ms window vs double=send) — same toggle logic as TP single click | Touchpad single click (same as TP) |
 | 3 | Cursor movement (grapheme-level) | TP left/right swipe (verified) | Keys 2/4/5/6 = up/left/down/right | Touchpad left/right swipe |
 | 4 | Delete previous grapheme | Shutter (verified broadcast) | Key 3 | Touchpad double click (`KEY_BACKSPACE` — natural match) |
-| 5 | Send (non-empty draft, discards in-flight recording) | TP long-press (verified broadcast) | **Left knob double press** (`KEY_8` ×2, 500 ms window; single = recording) | GO single click (`KEY_F8` short) |
+| 5 | Send (non-empty draft, discards in-flight recording) | TP long-press (verified broadcast) | **Left knob double press** (`KEY_8` ×2, 500 ms window; single = recording) | Touchpad long press (`KEY_HOME`) — swapped with GO single 2026-08-06 so TP long = send matches the Rokid TP |
 | 6 | Cancel/discard whole draft | TP double-click / Back (verified) | **Right knob single press** (`KEY_D`; double press is a harmless second cancel) | GO double click (`KEY_F8` ×2, 500 ms window) |
-| 7 | Command palette (trigger) | **Shutter double press** (second press within 500 ms; first press still deletes immediately — palette not implemented yet, bound 2026-08-06) | Key 1 | Touchpad long press (`KEY_HOME`) |
+| 7 | Command palette (trigger, implemented 2026-08-06) | **Shutter double press** (second press within 500 ms; first press still deletes immediately) | Key 1 | GO single click (`KEY_F8` short) — swapped with touchpad long 2026-08-06 |
+| 8 | Command palette (navigate / confirm / cancel) | TP up/down swipe = move, TP single click = confirm (inserts `/command` into the draft) | Keys 2/5 = move, left knob single = confirm, right knob single / Back = cancel | Touchpad left/right swipe = move (right = next), touchpad single = confirm, touchpad double = cancel |
 
-Ring4 notes: touchpad double-click arrives as `KEY_BACKSPACE` directly
+**Part 3 — command panel mode (Claude's own picker/menu open, 2026-08-06):**
+
+After sending a `/`-prefixed command (palette-selected or typed), Claude
+opens its own picker (e.g. `/model`); the app enters panel passthrough so
+navigation keys reach the PTY instead of browsing local history. Entered
+automatically on `/`-send; exited by cancel (ESC + exit) or auto-exit
+when the picker finishes.
+
+| # | Requirement | Rokid control | COIDEA KM control | INMO Ring4 control |
+|---|---|---|---|---|
+| 1 | Up / down (navigate picker) | TP up/down swipe (PTY arrows) | Keys 2 / 5 | Touchpad left/right swipe (right = down) |
+| 2 | Left / right | TP left/right swipe (PTY arrows) | Keys 4 / 6 | Touchpad left/right swipe (ring gestures corrected — right-swipe sends arrow-right) |
+| 3 | Confirm (Enter) | **TP long press** | Left knob single (`KEY_8`) | Touchpad long press (`KEY_HOME`) |
+| 4 | Cancel picker (ESC) + exit | **TP double click** | Right knob single (`KEY_D`) | GO double click (`KEY_F8` ×2, 500 ms window — consistent with the Back/cancel double in the other modes) |
+| 5 | Back (ESC + exit, same as cancel) | TP Back | Back | — |
+
+Bindings per user decision 2026-08-06 (Rokid: TP long = confirm / TP
+double = cancel-return; keyboard: left knob = confirm / right knob =
+cancel-return; Ring: touchpad long = confirm / GO single = cancel-return).
+STRICT ISOLATION: while the panel is open ONLY nav/confirm/cancel act —
+all other keys (history, ctrl+c, shutter, TP single, composer, input
+history) are blocked until panel mode exits.
+
+Panel mode shows `COMMAND PANEL / NAV CONFIRM CANCEL` in the header.
+NO AUTO-EXIT (removed 2026-08-06 — the input-line signal proved unreliable
+with two-level pickers like `/usage`, exiting mid-interaction): panel mode
+ends only on explicit cancel (TP double / right knob / GO double / Back,
+all ESC + exit). Opening the composer or reconnecting also exits panel
+mode.
+
+AXIS-ADAPTIVE SWIPE (user decision 2026-08-06): the glasses/ring have a
+single swipe gesture which adapts to the picker's detected axis
+(`TerminalView.pickerAxis()` — numbered option rows above the input line
+mean VERTICAL, e.g. `/model`; otherwise HORIZONTAL, e.g. `/effort`'s
+"←/→ to adjust" slider or `/usage`'s first-level tabs). Vertical: up/left
+= up, down/right = down. Horizontal: left/up = left, right/down = right
+(ring arrivals inverted-corrected; fast-swipe DPAD pairs deduped). The
+keyboard keeps full 2D control (keys 2/5/4/6); level switching in 2D
+pickers stays keyboard-only.
+
+AXIS DETECTION (`TerminalView.pickerAxis()`): find the input row (during
+a picker it is replaced by the ❯ focus marker), scan the ~12 rows above,
+count rows matching a numbered-item pattern (`\d\.`) — ≥2 numbered rows
+mean VERTICAL (e.g. `/model`'s "1. … 2. … 3. …" list); anything else is
+HORIZONTAL (e.g. `/usage`'s first-level tabs, `/effort`'s "←/→ to adjust"
+slider). This is a heuristic over Claude Code's current rendering
+conventions. FUTURE: if other picker layouts appear, give the axis
+detection per-command overrides (a per-picker configuration map) instead
+of extending the heuristic (user note 2026-08-06).
+
+STICKY AXIS + BOUNCE (2026-08-06): the axis is detected ONCE per picker
+(keyed by the pending command on the input line) and kept sticky — /model's
+picker re-renders without its numbered rows once the effort slider is
+focused, which would flip a per-frame detection to horizontal
+mid-interaction. In a vertical picker the glasses also bounce off the
+slider/header (`pickerBounceDirection()`): when the focus (❯ marker) is
+outside the numbered list, the swipe sends the arrow back toward the list,
+so the glasses never adjust the effort slider — the keyboard can.
+
+STALE-PICKER RECOVERY: if the app restarts/reconnects while Claude has a
+picker open, panel mode is off and the picker cannot be navigated — TP
+long press now sends ESC in terminal mode (the glasses' cancel gesture;
+this firmware delivers long press as a broadcast, so KEYCODE_TV never
+fires) — ctrl+c (key 3 / Shutter double / GO long) also works. The
+suggestion fill moved to Ring long press. Re-send the command normally
+after closing the picker.
+
+Ring4 notes (updated 2026-08-06): composer GO single = command palette,
+composer touchpad long = send (swapped); panel cancel = GO double; GO long
+(ctrl+c) has no composer use — confirmed unnecessary, stays unused there.
+touchpad double-click arrives as `KEY_BACKSPACE` directly
 (firmware resolves the double-click — no app-side arbitration needed for
 delete/return-bottom); all GO actions share `KEY_F8` and need app-side
 arbitration (hold >800 ms = long press; second press within 500 ms =
@@ -293,7 +364,7 @@ delete single (composer, immediate — delete does NOT share an arbitration
 window); TP long-press = send (composer only, no terminal meaning); Key 1 =
 return-to-live (terminal) / command palette (composer); Key 3 = ctrl+c
 (terminal) / delete (composer); Keys 2/5/4/6 = history (terminal) / arrows
-(composer). COIDEA knobs follow a confirm/cancel axis (user decision
+(composer) / picker nav (panel). COIDEA knobs follow a confirm/cancel axis (user decision
 2026-08-06): LEFT knob = confirm (open composer in terminal; recording
 single / send double in composer), RIGHT knob = cancel (Back in terminal;
 cancel single in composer).

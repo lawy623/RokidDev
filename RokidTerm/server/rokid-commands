@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# RokidTerm command-palette source (server side).
+#
+# Lists CUSTOM Claude commands/skills whose file names are command names,
+# from the per-user and per-project command/skill directories. The app
+# merges this output with its local built-in list. Output format: one slash
+# command per line; blank lines and '#' comments are ignored by the app.
+# Never parse terminal pixels — file enumeration only.
+#
+# Install (deploy once on the endpoint's terminal user):
+#   scp server/rokid-commands <user>@<host>:/home/<user>/bin/rokid-commands
+#   ssh <user>@<host> chmod +x /home/<user>/bin/rokid-commands
+set -u
+
+for d in \
+  "$HOME/.claude/commands" \
+  "$PWD/.claude/commands" \
+  "$HOME/.claude/skills" \
+  "$PWD/.claude/skills"
+do
+  [ -d "$d" ] || continue
+  for f in "$d"/*.md; do
+    [ -f "$f" ] || continue
+    base="$(basename "$f" .md)"
+    case "$base" in
+      *" "*) ;;                    # invalid command name (contains spaces)
+      *) printf '/%s\n' "$base" ;;
+    esac
+  done
+done | sort -u

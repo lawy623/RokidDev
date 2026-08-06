@@ -187,6 +187,11 @@ Verified on the current glasses and Tencent Cloud server:
   [oldest…newest] → empty (remote light suggestion visible) → suggestion
   (dark); pointer starts at the empty entry; key 6 walks to the dark
   suggestion repeatedly; the suggestion is never stored in history.
+- Command palette (2026-08-06): local modal list in the composer overlay
+  (selected item highlighted, /skills-style), insert-on-confirm into the
+  draft, Escape-like literal-slash restore on cancel; dynamic command list
+  fetched once per connection from the server helper (file enumeration of
+  Claude command/skill dirs), local built-in defaults as fallback.
 
 ### Open / pending
 
@@ -201,9 +206,17 @@ Verified on the current glasses and Tencent Cloud server:
   detection deployed and hardware-verified (single-session history grows
   long), per-endpoint scrollback persistence deployed
   (`scrollback rows:` diagnostic log remains in place).
-- Command palette (composer key 1 / `/` prefix / Shutter double /
-  touchpad long-press) — not implemented; contract decided, list source
-  deferred.
+- ~~Command palette~~ — **implemented 2026-08-06, only a few `/` commands
+  tested** (see `rules/composer.md`): local modal list, triggers COIDEA
+  key 1 / Shutter double / Ring long-press / `/` at prefix position;
+  server-assisted list via `ServerCommandFetcher` + `server/rokid-commands`
+  helper (custom commands by file enumeration), local defaults as
+  fallback. Future interaction issues are possible with untested
+  pickers — handle per-command (user note 2026-08-06).
+- Panel-mode picker axis: heuristic detection (numbered rows = vertical)
+  with sticky axis + bounce; if future Claude picker layouts break the
+  heuristic, add per-command axis overrides instead of extending it
+  (user note 2026-08-06; contract in `rules/input.md` Part 3).
 - ~~Second ring device~~ — dropped 2026-08-06 (the other INMO ring does
   not power on reliably; supported external input is INMO Ring4 + COIDEA
   KM keyboard only).
