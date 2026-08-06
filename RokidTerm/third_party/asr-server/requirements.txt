@@ -1,0 +1,6 @@
+# FunASR's CPU backend. Keep the service single-worker on the 3.6 GiB test VM.
+funasr>=1.2.6,<2
+fastapi>=0.115,<1
+uvicorn[standard]>=0.34,<1
+python-multipart>=0.0.20,<1
+requests>=2.32,<3
