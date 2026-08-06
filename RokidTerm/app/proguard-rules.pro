@@ -1,0 +1,4 @@
+-keep class com.jcraft.jsch.** { *; }
+-keep class org.bouncycastle.** { *; }
+-dontwarn org.bouncycastle.**
+-dontwarn net.i2p.crypto.eddsa.**
