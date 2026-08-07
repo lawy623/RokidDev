@@ -364,10 +364,21 @@ with open(path, encoding="utf-8", errors="replace") as fh:
                 if clean.strip():
                     out.append("❯ " + clean[:100])
         elif t == "assistant":
+            # Rewritten (compacted) transcripts put assistant content under
+            # "message"."content" too — without this the assistant replies
+            # were dropped and history showed only user inputs (bug 2,
+            # 2026-08-08).
             c = e.get("content")
-            if not isinstance(c, list):
+            if c is None:
+                m = e.get("message")
+                c = m.get("content") if isinstance(m, dict) else None
+            if isinstance(c, str):
+                blocks = [{"text": c}]
+            elif isinstance(c, list):
+                blocks = c
+            else:
                 continue
-            for b in c:
+            for b in blocks:
                 if isinstance(b, dict) and isinstance(b.get("text"), str):
                     for ln in b["text"].splitlines() or [""]:
                         clean = "".join(ch if ord(ch) >= 0x20 else " " for ch in ln)

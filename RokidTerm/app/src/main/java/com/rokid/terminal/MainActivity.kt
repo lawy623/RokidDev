@@ -1896,6 +1896,12 @@ class MainActivity : Activity() {
                     // the first message, so without this the new chat would
                     // stay invisible in the picker (user 2026-08-08).
                     if (isNew) rememberNewSessionInCache(folderPath, sessionId)
+                    // The app-generated session id may differ from the
+                    // server's real file (--session-id can be ignored / the
+                    // file appears only later) — discover and correct the
+                    // binding so resumes work and rows don't duplicate
+                    // (bug 1, 2026-08-08).
+                    if (isNew) discoverNewSessionId(folderPath, sessionId)
                     // Resumed conversations get their FULL transcript pulled
                     // into the local scrollback (the server replay is a
                     // redraw, not a scroll, so nothing is captured locally —
@@ -1968,6 +1974,51 @@ class MainActivity : Activity() {
                 folder
             }
         }
+    }
+
+    /**
+     * Polls `status` for a few seconds after a NEW conversation switch and,
+     * when the server's real session id appears (the JSONL is written on the
+     * first message), corrects the binding/remembered target/cache to the
+     * REAL id. The app-generated placeholder id may differ from the server's
+     * file, which caused duplicate-looking rows, failed resumes, and a wrong
+     * ▶ marker (bug 1, 2026-08-08). Session ids are never logged.
+     */
+    private fun discoverNewSessionId(folderPath: String, tempSessionId: String) {
+        val endpoint = activeEndpoint ?: return
+        val fetcher = sessionFetcher ?: return
+        val folderKey = ServerSessionFetcher.encodeDir(folderPath)
+        Thread {
+            for (attempt in 0 until 6) {
+                Thread.sleep(2000)
+                val status = fetcher.status(endpoint.sessionName) ?: continue
+                val cwd = status.cwd ?: continue
+                if (ServerSessionFetcher.encodeDir(cwd) != folderKey) continue
+                val realId = status.sessionId ?: continue
+                if (realId == tempSessionId || realId.isEmpty()) continue
+                runOnUiThread {
+                    if (scrollbackSessionId == tempSessionId) {
+                        persistScrollback()
+                        scrollbackSessionId = realId
+                        rememberTarget(folderPath, realId)
+                        sessionPicker.markCurrent(folderPath, realId)
+                        inputHistory = InputHistory(filesDir, "$folderKey/$realId")
+                        // Replace the placeholder id in the cached list.
+                        cachedFolders = cachedFolders?.map { folder ->
+                            if (folder.path == folderPath) {
+                                val sessions = folder.sessions.map {
+                                    if (it.id == tempSessionId) it.copy(id = realId) else it
+                                }
+                                folder.copy(sessions = sessions)
+                            } else {
+                                folder
+                            }
+                        }
+                    }
+                }
+                return@Thread
+            }
+        }.start()
     }
 
     /**
