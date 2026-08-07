@@ -1,11 +1,14 @@
 package com.rokid.terminal
 
-import android.content.Context
 import android.util.Log
 import java.io.File
 
 /**
- * App-private local cache of sent composer drafts (input history).
+ * App-private local cache of sent composer drafts (input history), keyed per
+ * CONVERSATION (user decision 2026-08-08: input history must not be shared
+ * across conversations). The key is the conversation's folderKey/sessionId;
+ * each key owns its own file `input_history_<key>.txt` (key == null uses the
+ * legacy global file, which is never merged into per-conversation files).
  *
  * Deliberately local-only (user decision 2026-08-05): re-typing is the
  * fallback when a draft was not sent through RokidTerm. Storage is an
@@ -14,8 +17,12 @@ import java.io.File
  *
  * Threading: called from the main thread only (key handlers / composer).
  */
-class InputHistory(context: Context) {
-    private val file = File(context.filesDir, "input_history.txt")
+class InputHistory(filesDir: File, key: String? = null) {
+    private val file = if (key == null) {
+        File(filesDir, "input_history.txt")
+    } else {
+        File(filesDir, "input_history_${sanitize(key)}.txt")
+    }
     private val entries = mutableListOf<String>()
     // Claude Code's next-input suggestion (from the "❯" line, light text).
     // In-memory only; never persisted, never part of the history entries.
@@ -119,5 +126,6 @@ class InputHistory(context: Context) {
 
     companion object {
         private const val MAX_ENTRIES = 50
+        fun sanitize(value: String): String = value.replace(Regex("[^A-Za-z0-9_.-]"), "_")
     }
 }

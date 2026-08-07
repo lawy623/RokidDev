@@ -131,7 +131,9 @@ class MainActivity : Activity() {
         importPendingProfile()
 
         terminalView = TerminalView(this)
-        inputHistory = InputHistory(this)
+        // Unbound placeholder; bindScrollback rebinds it per conversation
+        // (input history is keyed per conversation, user 2026-08-08).
+        inputHistory = InputHistory(filesDir)
 
         ssh = SshTerminalSession(
             onState = { value ->
@@ -1825,7 +1827,12 @@ class MainActivity : Activity() {
                 } else {
                     folders
                 }
-                cachedFolders = fresh
+                // Cache ONLY successful fetches: a transient failure must
+                // not poison the cache with the /srv-only fallback, or every
+                // later open shows it instantly (user report 2026-08-08).
+                if (folders != null && folders.isNotEmpty()) {
+                    cachedFolders = folders
+                }
                 if (sessionPicker.open && sessionPicker.level == 0 && !folderSelectionMoved) {
                     sessionPicker.setFolders(fresh, failed = folders == null)
                     sessionPicker.selectFolder(sessionPicker.currentFolderPath)
@@ -1939,6 +1946,11 @@ class MainActivity : Activity() {
         // (user report 2026-08-08).
         terminalOutput.clearScrollback()
         terminalOutput.importScrollbackText(rows)
+        // Input history is per-conversation too (user 2026-08-08): each
+        // conversation owns its drafts; switching rebinds the cache.
+        historyPreview = null
+        terminalView.setHistoryPreview(null)
+        inputHistory = InputHistory(filesDir, "$scrollbackFolderKey/$scrollbackSessionId")
     }
 
     private fun rememberTarget(folderPath: String, sessionId: String) {
