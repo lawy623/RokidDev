@@ -1314,13 +1314,16 @@ class EndpointProfileTest {
 
     @Test
     fun `legacy remote command launches claude in the workspace`() {
-        val command = profile().legacyRemoteCommand
-
-        assertTrue(command.contains(
-            "tmux new-session -d -s cloud-claude -c '/srv/projects/my World' " +
-                "/home/rokid/bin/rokid-claude --effort max --dangerously-skip-permissions",
-        ))
-        assertTrue(command.endsWith("exec tmux attach-session -t cloud-claude"))
+        // Full-string assertEquals locks byte-identity with the pre-
+        // multi-conversation remoteCommand (fix round 1, 2026-08-08).
+        assertEquals(
+            "(tmux has-session -t cloud-claude 2>/dev/null || " +
+                "tmux new-session -d -s cloud-claude -c '/srv/projects/my World' " +
+                "/home/rokid/bin/rokid-claude --effort max --dangerously-skip-permissions) && " +
+                statusOptions +
+                "exec tmux attach-session -t cloud-claude",
+            profile().legacyRemoteCommand,
+        )
     }
 }
 ```
