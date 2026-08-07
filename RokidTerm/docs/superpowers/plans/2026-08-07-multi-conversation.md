@@ -1022,7 +1022,11 @@ descendants() {
         next+=("$child")
       done
     done
-    frontier=("${next[@]}")
+    if [ "${#next[@]}" -gt 0 ]; then
+      frontier=("${next[@]}")
+    else
+      frontier=()
+    fi
     level=$((level + 1))
   done
 }
@@ -1095,11 +1099,16 @@ cmd_switch() {
   local session="$1" base="$2" dir="$3" target="$4"
   local base_resolved dir_resolved
   base_resolved="$(cd "$base" 2>/dev/null && pwd -P)" || { echo "error\tbase not accessible"; return 1; }
-  case "$dir" in
-    "$base_resolved"/*) ;;
-    *) echo "error\tpath outside base"; return 1 ;;
-  esac
   dir_resolved="$(cd "$dir" 2>/dev/null && pwd -P)" || { echo "error\tpath not accessible"; return 1; }
+  # Validate the RESOLVED dir (handles .. and symlinks): base itself or a
+  # path under it. ${var#prefix} literal-removal avoids case-pattern glob
+  # metacharacters in the base path.
+  if [ "$dir_resolved" = "$base_resolved" ] ||
+     [ "${dir_resolved#"$base_resolved"/}" != "$dir_resolved" ]; then
+    : # ok
+  else
+    echo "error\tpath outside base"; return 1
+  fi
 
   local id launch_args
   case "$target" in
@@ -1138,7 +1147,9 @@ cmd_switch() {
         kill -0 "$claude_pid" 2>/dev/null && kill -9 "$claude_pid" 2>/dev/null
         sleep 1
       fi
-      tmux send-keys -t "$session" "cd $dir_resolved && $launch_cmd" Enter
+      local qdir
+      qdir="$(printf '%q' "$dir_resolved")"
+      tmux send-keys -t "$session" "cd $qdir && $launch_cmd" Enter
     fi
   else
     tmux new-session -d -s "$session" -c "$dir_resolved" "$launch_cmd"
