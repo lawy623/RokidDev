@@ -66,6 +66,11 @@ class MainActivity : Activity() {
     private var sessionPickerConnectMode = false
     private var sessionFetcher: ServerSessionFetcher? = null
 
+    /** Last fetched folder list; shown instantly on the next picker open. */
+    private var cachedFolders: List<RemoteFolder>? = null
+    /** True once the user moved the folder selection (live refresh skips). */
+    private var folderSelectionMoved = false
+
     private var lastScrollbackCount = -1
     private var scrollbackStore: ScrollbackStore? = null
     private var scrollbackFolderKey: String? = null
@@ -1356,6 +1361,7 @@ class MainActivity : Activity() {
 
     private fun sessionPickerMove(delta: Int) {
         if (!sessionPicker.open) return
+        folderSelectionMoved = true
         sessionPicker.move(delta)
         sessionPickerSyncToView()
     }
@@ -1746,27 +1752,50 @@ class MainActivity : Activity() {
         val endpoint = activeEndpoint ?: return
         sessionPickerConnectMode = connectMode
         clearPrimaryGesture()
+        folderSelectionMoved = false
         sessionPicker.open(rememberedFolder(endpoint.id), rememberedSession(endpoint.id))
+        // Cache-first (user request 2026-08-08): the last fetched folder
+        // list shows instantly (a fresh SSH fetch takes seconds on this
+        // network), then refreshSessionFolders updates it in the background.
+        // Stale entries are safe: the server switch verb re-validates the
+        // target directory, so a deleted folder fails with an error, never
+        // a hang. The cache is in-memory (per app run), not persisted.
+        val cached = cachedFolders
+        if (cached != null) {
+            sessionPicker.setFolders(cached, failed = false)
+            // Pre-select the remembered folder when it is still listed
+            // (user decision 2026-08-08); otherwise the base dir stays.
+            sessionPicker.selectFolder(sessionPicker.currentFolderPath)
+        }
         sessionPickerSyncToView()
+        refreshSessionFolders(endpoint)
+    }
+
+    /**
+     * Background folder-list refresh. Applies live only while the picker is
+     * still at the folder level and the user has not moved the selection
+     * (applying mid-navigation would reset it); otherwise the fresh list is
+     * cached for the next open.
+     */
+    private fun refreshSessionFolders(endpoint: EndpointProfile) {
         val fetcher = sessionFetcher ?: return
         val workspace = endpoint.workspace
         Thread {
             val folders = fetcher.listSessions(workspace)
             runOnUiThread {
-                if (folders.isNullOrEmpty()) {
+                val fresh = if (folders.isNullOrEmpty()) {
                     // Helper unreachable or no folders: fall back to a single
                     // "new conversation" entry in the workspace.
-                    sessionPicker.setFolders(
-                        listOf(RemoteFolder(workspace, ServerSessionFetcher.encodeDir(workspace), emptyList())),
-                        failed = folders == null,
-                    )
+                    listOf(RemoteFolder(workspace, ServerSessionFetcher.encodeDir(workspace), emptyList()))
                 } else {
-                    sessionPicker.setFolders(folders, failed = false)
+                    folders
                 }
-                // Pre-select the remembered folder when it is still listed
-                // (user decision 2026-08-08); otherwise the base dir stays.
-                sessionPicker.selectFolder(sessionPicker.currentFolderPath)
-                sessionPickerSyncToView()
+                cachedFolders = fresh
+                if (sessionPicker.open && sessionPicker.level == 0 && !folderSelectionMoved) {
+                    sessionPicker.setFolders(fresh, failed = folders == null)
+                    sessionPicker.selectFolder(sessionPicker.currentFolderPath)
+                    sessionPickerSyncToView()
+                }
             }
         }.start()
     }
@@ -1794,7 +1823,7 @@ class MainActivity : Activity() {
                     if (thenConnect) connectAfterSwitch(endpoint)
                     updateHeader()
                     android.widget.Toast.makeText(
-                        this, "已切换会话", android.widget.Toast.LENGTH_SHORT,
+                        this, "Session switched", android.widget.Toast.LENGTH_SHORT,
                     ).show()
                 } else if (thenConnect) {
                     // Helper unavailable (not yet deployed / server error):
@@ -1805,7 +1834,7 @@ class MainActivity : Activity() {
                     connectAfterSwitch(endpoint, useLegacy = true)
                 } else {
                     android.widget.Toast.makeText(
-                        this, "切换失败", android.widget.Toast.LENGTH_SHORT,
+                        this, "Switch failed", android.widget.Toast.LENGTH_SHORT,
                     ).show()
                     updateHeader()
                 }
@@ -1830,9 +1859,9 @@ class MainActivity : Activity() {
                         }
                     }
                     sessionPickerSyncToView()
-                    android.widget.Toast.makeText(this, "已删除会话", android.widget.Toast.LENGTH_SHORT).show()
+                    android.widget.Toast.makeText(this, "Session deleted", android.widget.Toast.LENGTH_SHORT).show()
                 } else {
-                    android.widget.Toast.makeText(this, "删除失败", android.widget.Toast.LENGTH_SHORT).show()
+                    android.widget.Toast.makeText(this, "Delete failed", android.widget.Toast.LENGTH_SHORT).show()
                 }
             }
         }.start()
@@ -1904,7 +1933,7 @@ class MainActivity : Activity() {
                     )
                 }
                 sessionPicker.markCurrent(status.cwd, scrollbackSessionId)
-                android.widget.Toast.makeText(this, "已切换会话", android.widget.Toast.LENGTH_SHORT).show()
+                android.widget.Toast.makeText(this, "Session switched", android.widget.Toast.LENGTH_SHORT).show()
             }
         }.start()
     }

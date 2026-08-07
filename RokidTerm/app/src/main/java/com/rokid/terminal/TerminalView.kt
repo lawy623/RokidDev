@@ -860,13 +860,16 @@ class TerminalView(context: Context) : View(context) {
     }
 
     private fun drawSessionPicker(canvas: Canvas) {
-        val left = 24f
-        val right = width - 24f
+        // Full-bleed opaque cover below the top info bar (user 2026-08-08):
+        // the terminal footer and any live output must never bleed through
+        // the modal.
+        val left = 0f
+        val right = width.toFloat()
         val top = 90f
-        val bottom = height - 60f
+        val bottom = height.toFloat()
 
         paint.color = Color.BLACK
-        paint.alpha = 246
+        paint.alpha = 255
         canvas.drawRect(left, top, right, bottom, paint)
         paint.style = Paint.Style.STROKE
         paint.strokeWidth = 2f
@@ -903,7 +906,7 @@ class TerminalView(context: Context) : View(context) {
             sessionPickerUi.folders.map { it.path }
         } else {
             val folder = sessionPickerUi.folders.getOrNull(sessionPickerUi.folderIndex)
-            listOf("＋ 新对话") + (folder?.sessions?.map { it.title } ?: emptyList())
+            listOf("+ New Chat") + (folder?.sessions?.map { it.title } ?: emptyList())
         }
         val selected = if (sessionPickerUi.level == 0) {
             sessionPickerUi.folderIndex
@@ -917,7 +920,7 @@ class TerminalView(context: Context) : View(context) {
         if (sessionPickerUi.error && items.size <= 1) {
             paint.alpha = 170
             paint.textSize = 13f
-            canvas.drawText("会话助手不可用 / 确认 = 新对话", listLeft, listTop + 90f, paint)
+            canvas.drawText("HELPER UNAVAILABLE / CONFIRM = NEW CHAT", listLeft, listTop + 90f, paint)
         }
 
         paint.textSize = 16f
