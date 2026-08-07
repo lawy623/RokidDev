@@ -73,6 +73,11 @@ class MainActivity : Activity() {
     private var lastPickerSwipe: String? = null
     private var lastPickerSwipeTime = 0L
 
+    /** True while a conversation switch is in flight — input is locked
+     *  (composer/picker/sends/Back), like the delete in-flight state
+     *  (user 2026-08-08). */
+    private var switchInFlight = false
+
     private var lastScrollbackCount = -1
     private var scrollbackStore: ScrollbackStore? = null
     private var scrollbackFolderKey: String? = null
@@ -446,7 +451,7 @@ class MainActivity : Activity() {
                     refreshComposer("EDITING / CLICK TO LISTEN")
                     return true
                 }
-                Mode.TERMINAL -> if (sshState == "CONNECTED") {
+                Mode.TERMINAL -> if (sshState == "CONNECTED" && !switchInFlight) {
                     ssh.sendCharacters(characters)
                     return true
                 }
@@ -751,10 +756,14 @@ class MainActivity : Activity() {
                 return true
             }
             KeyEvent.KEYCODE_BACK -> {
-                persistScrollback()
-                ssh.disconnect()
-                asr.disconnect()
-                showEndpointPicker()
+                // Locked during a conversation switch: disconnecting
+                // mid-respawn would strand the pane (2026-08-08).
+                if (!switchInFlight) {
+                    persistScrollback()
+                    ssh.disconnect()
+                    asr.disconnect()
+                    showEndpointPicker()
+                }
                 return true
             }
             KeyEvent.KEYCODE_TV -> {
@@ -1071,7 +1080,9 @@ class MainActivity : Activity() {
     private fun handlePrimarySingleClick() {
         when (mode) {
             Mode.TERMINAL -> {
-                if (panelMode) {
+                if (switchInFlight) {
+                    // Locked during a conversation switch (2026-08-08).
+                } else if (panelMode) {
                     // Strict isolation: TP single does nothing while the
                     // panel is open (confirm = TP long, cancel = TP double).
                 } else if (sshState.startsWith("ERROR") || sshState == "DISCONNECTED") {
@@ -1099,6 +1110,9 @@ class MainActivity : Activity() {
     }
 
     private fun openComposer() {
+        // Locked while a conversation switch is in flight: input must not
+        // reach the dying/restarting pane (user 2026-08-08).
+        if (switchInFlight) return
         android.util.Log.i("RokidTerminal", "mode -> COMPOSER (openComposer)")
         panelMode = false
         publishTerminalFrame(terminalOutput.returnToLive())
@@ -1783,6 +1797,8 @@ class MainActivity : Activity() {
     }
 
     private fun openSessionPicker(connectMode: Boolean) {
+        // Locked while a switch is in flight (no double-switch races).
+        if (switchInFlight) return
         val endpoint = activeEndpoint ?: return
         sessionPickerConnectMode = connectMode
         clearPrimaryGesture()
@@ -1854,6 +1870,7 @@ class MainActivity : Activity() {
         val endpoint = activeEndpoint ?: return
         val fetcher = sessionFetcher ?: return
         persistScrollback()
+        switchInFlight = true
         terminalView.setState(if (thenConnect) "CONNECTING / STARTING" else "SWITCHING…")
         val tmuxSession = endpoint.sessionName
         val workspace = endpoint.workspace
@@ -1861,6 +1878,7 @@ class MainActivity : Activity() {
             val raw = fetcher.switchConversation(tmuxSession, workspace, folderPath, sessionId, isNew)
             val ok = raw != null && ServerSessionFetcher.parseSwitchResult(raw) != null
             runOnUiThread {
+                switchInFlight = false
                 if (ok) {
                     bindScrollback(folderPath, sessionId)
                     rememberTarget(folderPath, sessionId)
@@ -1995,7 +2013,7 @@ class MainActivity : Activity() {
     private fun pollSessionSync() {
         val fetcher = sessionFetcher ?: return
         val endpoint = activeEndpoint ?: return
-        if (sshState != "CONNECTED" || sessionPicker.open) return
+        if (sshState != "CONNECTED" || sessionPicker.open || switchInFlight) return
         Thread {
             val status = fetcher.status(endpoint.sessionName)
             runOnUiThread {
