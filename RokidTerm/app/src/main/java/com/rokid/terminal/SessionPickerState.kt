@@ -28,6 +28,11 @@ class SessionPickerState {
     var currentSessionId: String? = null
         private set
 
+    var deleteArmed: Boolean = false
+        private set
+    var deleteOption: Int = 0
+        private set
+
     /**
      * Session-visible count: the new-conversation slot plus the selected
      * folder's sessions. Always at least 1 (the new-conversation slot)
@@ -62,9 +67,9 @@ class SessionPickerState {
         loading = false
     }
 
-    /** Moves the selection with wrap-around within the current level; no-op while loading/empty. */
+    /** Moves the selection with wrap-around within the current level; no-op while loading/empty/armed. */
     fun move(delta: Int) {
-        if (!open || loading) return
+        if (!open || loading || deleteArmed) return
         if (level == 0) {
             if (folders.isEmpty()) return
             folderIndex = ((folderIndex + delta) % folders.size + folders.size) % folders.size
@@ -73,9 +78,9 @@ class SessionPickerState {
         }
     }
 
-    /** Level 1 -> level 0 (true); level 0 -> stays open, returns false (caller closes). */
+    /** Level 1 -> level 0 (true); level 0 -> stays open, returns false (caller closes). Blocked when armed. */
     fun back(): Boolean {
-        if (!open || level != 1) return false
+        if (!open || deleteArmed || level != 1) return false
         level = 0
         sessionIndex = 0
         return true
@@ -88,7 +93,7 @@ class SessionPickerState {
      * chosen target (session id null = new conversation). Does NOT close.
      */
     fun confirm(): SessionTarget? {
-        if (!open) return null
+        if (!open || deleteArmed) return null
         if (level == 0) {
             if (folders.isEmpty()) return null
             level = 1
@@ -98,6 +103,44 @@ class SessionPickerState {
         val folder = selectedFolder() ?: return null
         val session = folder.sessions.getOrNull(sessionIndex - 1)
         return SessionTarget(folder.path, session?.id)
+    }
+
+    /**
+     * Arms the delete selector on the selected session row. False when the
+     * picker is closed, not on a session row, or the row IS the current
+     * conversation (▶) — the running conversation is never deletable.
+     */
+    fun armDelete(): Boolean {
+        if (!open || level != 1 || sessionIndex < 1) return false
+        val session = selectedFolder()?.sessions?.getOrNull(sessionIndex - 1) ?: return false
+        if (session.id == currentSessionId) return false
+        deleteArmed = true
+        deleteOption = 0 // default on 取消 (safe position)
+        return true
+    }
+
+    fun disarmDelete() {
+        deleteArmed = false
+        deleteOption = 0
+    }
+
+    /** Moves between 取消 (0) and 删除 (1) with wrap; no-op when not armed. */
+    fun moveDeleteOption(delta: Int) {
+        if (!deleteArmed) return
+        deleteOption = ((deleteOption + delta) % 2 + 2) % 2
+    }
+
+    /** True only when armed on 删除 — the caller executes the delete. */
+    fun confirmDeleteOption(): Boolean = deleteArmed && deleteOption == 1
+
+    /** Removes the selected session from the folder and clamps the selection. */
+    fun removeCurrentSession() {
+        val folder = selectedFolder() ?: return
+        val index = sessionIndex - 1
+        val updated = folder.sessions.filterIndexed { i, _ -> i != index }
+        folders = folders.map { if (it.encodedDir == folder.encodedDir) it.copy(sessions = updated) else it }
+        sessionIndex = sessionIndex.coerceAtMost(conversationCount - 1)
+        disarmDelete()
     }
 
     /** Updates the ▶ markers after a successful switch. */
