@@ -1160,6 +1160,11 @@ class MainActivity : Activity() {
             android.widget.Toast.makeText(this, "TEST SEND OK: $text", android.widget.Toast.LENGTH_SHORT).show()
         } else {
             ssh.sendText(text)
+            // The first message creates the server JSONL: if this chat's
+            // cached row is still the "New chat" placeholder, refetch now so
+            // the real title appears without exiting the terminal (bug 1
+            // follow-up, 2026-08-08).
+            refreshNewChatTitleIfNeeded()
         }
         inputHistory.add(text)
         composer.clear()
@@ -1987,6 +1992,23 @@ class MainActivity : Activity() {
     }
 
     /**
+     * After sending in a freshly created chat whose cached row is still the
+     * "New chat" placeholder, refetch the folder list so the real
+     * first-message title replaces it without exiting the terminal
+     * (bug 1 follow-up, 2026-08-08). No-op otherwise.
+     */
+    private fun refreshNewChatTitleIfNeeded() {
+        val folderKey = scrollbackFolderKey ?: return
+        val sessionId = scrollbackSessionId ?: return
+        val endpoint = activeEndpoint ?: return
+        val isPlaceholder = cachedFolders?.any { folder ->
+            folder.encodedDir == folderKey &&
+                folder.sessions.any { it.id == sessionId && it.title == NEW_CHAT_TITLE }
+        } == true
+        if (isPlaceholder) refreshSessionFolders(endpoint)
+    }
+
+    /**
      * Adds a freshly created conversation to the cached folder list with a
      * "New chat" placeholder title, so the next picker open shows it
      * instantly. The background refresh replaces the placeholder with the
@@ -1997,7 +2019,7 @@ class MainActivity : Activity() {
         val now = System.currentTimeMillis()
         cachedFolders = cached.map { folder ->
             if (folder.path == folderPath && folder.sessions.none { it.id == sessionId }) {
-                folder.copy(sessions = listOf(RemoteSession(sessionId, "New chat", now)) + folder.sessions)
+                folder.copy(sessions = listOf(RemoteSession(sessionId, NEW_CHAT_TITLE, now)) + folder.sessions)
             } else {
                 folder
             }
@@ -2275,6 +2297,10 @@ class MainActivity : Activity() {
 
         /** Sync-watcher poll interval (design 2026-08-07 §3.3); see [sessionSyncRunnable]. */
         const val SESSION_SYNC_MS = 30_000L
+
+        /** Placeholder title for freshly created conversations (until the
+         *  server's first-message title is fetched). */
+        const val NEW_CHAT_TITLE = "New chat"
 
         /**
          * After a conversation switch the watcher suppresses rebinds for this
