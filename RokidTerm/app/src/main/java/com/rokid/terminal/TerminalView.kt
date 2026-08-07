@@ -861,7 +861,7 @@ class TerminalView(context: Context) : View(context) {
         paint.textSize = 11f
         canvas.drawLine(left + 10f, bottom - 60f, right - 10f, bottom - 60f, paint)
         canvas.drawText("UP/DOWN SELECT   CONFIRM INSERT", left + 12f, bottom - 36f, paint)
-        canvas.drawText("BACK CANCEL", left + 12f, bottom - 15f, paint)
+        canvas.drawText("BACK / KNOB-R CANCEL", left + 12f, bottom - 15f, paint)
         resetPaint()
     }
 
@@ -1019,12 +1019,11 @@ class TerminalView(context: Context) : View(context) {
             paint.textSize = 11f
             canvas.drawLine(left + 10f, bottom - 60f, right - 10f, bottom - 60f, paint)
             val hint = if (sessionPickerUi.level == 0) {
-                "UP/DOWN SELECT   CONFIRM OPEN"
+                "UP/DOWN SELECT   CONFIRM OPEN   BACK CANCEL"
             } else {
                 "CONFIRM SWITCH   BACK = UP"
             }
             canvas.drawText(hint, left + 12f, bottom - 36f, paint)
-            canvas.drawText("BACK CANCEL", left + 12f, bottom - 15f, paint)
         }
         resetPaint()
     }
