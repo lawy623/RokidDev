@@ -334,6 +334,9 @@ class MainActivity : Activity() {
      * reaches the app, so their ordered system broadcasts are the only signal.
      */
     private fun handleSystemKeyAction(action: Int) {
+        // Switch in flight: the long-press/Shutter broadcasts are consumed
+        // (no ESC/ctrl+c to the dying pane, 2026-08-08).
+        if (switchInFlight) return
         if (sessionPicker.open) {
             // Strict isolation: only the long-press broadcast acts (delete
             // selector arm); the Shutter broadcast is consumed.
@@ -411,6 +414,9 @@ class MainActivity : Activity() {
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         if (sessionPicker.open && handleSessionPickerKey(keyCode, event)) return true
+        // Conversation switch in flight: ALL input is locked (user
+        // 2026-08-08) — ctrl+c, disconnect, ESC, GO arbitration included.
+        if (switchInFlight) return true
         if (mode != Mode.ENDPOINTS && isPrimaryKey(keyCode)) {
             return handlePrimaryKeyDown(keyCode, event)
         }
@@ -428,6 +434,8 @@ class MainActivity : Activity() {
             if (isRingKey(event) && keyCode == KeyEvent.KEYCODE_F8) handleGoKey(event)
             return true
         }
+        // Switch in flight: consume every key-up (incl. GO arbitration).
+        if (switchInFlight) return true
         // GO button arbitration (single/double/long press) resolves on key UP.
         if (isRingKey(event) && keyCode == KeyEvent.KEYCODE_F8) {
             handleGoKey(event)
@@ -441,8 +449,8 @@ class MainActivity : Activity() {
 
     override fun onKeyMultiple(keyCode: Int, repeatCount: Int, event: KeyEvent): Boolean {
         // Strict isolation: characters never reach the PTY/composer while
-        // the conversation picker is open.
-        if (sessionPicker.open) return true
+        // the conversation picker is open or a switch is in flight.
+        if (sessionPicker.open || switchInFlight) return true
         event.characters?.takeIf { it.isNotEmpty() }?.let { characters ->
             when (mode) {
                 Mode.COMPOSER -> {
