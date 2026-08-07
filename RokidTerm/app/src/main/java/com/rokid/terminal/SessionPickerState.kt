@@ -89,6 +89,20 @@ class SessionPickerState {
     fun selectedFolder(): RemoteFolder? = folders.getOrNull(folderIndex)
 
     /**
+     * Moves the folder-level selection to the folder at [path] (e.g. the
+     * remembered last-used folder after a fetch). No-op (false) when the
+     * picker is closed, the path is null, or the folder is not listed —
+     * the selection then stays at the first folder (the base dir).
+     */
+    fun selectFolder(path: String?): Boolean {
+        if (!open || path == null) return false
+        val index = folders.indexOfFirst { it.path == path }
+        if (index < 0) return false
+        folderIndex = index
+        return true
+    }
+
+    /**
      * Level 0: descends to conversations, returns null. Level 1: returns the
      * chosen target (session id null = new conversation). Does NOT close.
      */

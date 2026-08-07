@@ -231,4 +231,19 @@ class SessionPickerStateTest {
         assertEquals(listOf("id-1"), picker.selectedFolder()?.sessions?.map { it.id })
         assertFalse(picker.deleteArmed)
     }
+
+    @Test
+    fun selectFolderMovesToRememberedFolder() {
+        val picker = SessionPickerState().apply {
+            open("/srv/RokidDev", null)
+            setFolders(listOf(folderA, folderB), failed = false)
+        }
+
+        assertTrue(picker.selectFolder(picker.currentFolderPath))
+        assertEquals(1, picker.folderIndex)
+
+        assertFalse(picker.selectFolder("/nonexistent"))
+        assertEquals(1, picker.folderIndex)
+        assertFalse(picker.selectFolder(null))
+    }
 }

@@ -1760,6 +1760,9 @@ class MainActivity : Activity() {
                 } else {
                     sessionPicker.setFolders(folders, failed = false)
                 }
+                // Pre-select the remembered folder when it is still listed
+                // (user decision 2026-08-08); otherwise the base dir stays.
+                sessionPicker.selectFolder(sessionPicker.currentFolderPath)
                 sessionPickerSyncToView()
             }
         }.start()
