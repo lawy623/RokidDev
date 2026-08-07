@@ -71,7 +71,10 @@ class MainActivity : Activity() {
     private var scrollbackFolderKey: String? = null
     private var scrollbackSessionId: String? = null
 
-    private val prefs = getSharedPreferences(SESSION_PREFS, MODE_PRIVATE)
+    // Lazy: field initializers run before attachBaseContext, so a direct
+    // getSharedPreferences here NPEs at activity instantiation (crash fixed
+    // 2026-08-08, caught on device).
+    private val prefs by lazy { getSharedPreferences(SESSION_PREFS, MODE_PRIVATE) }
 
     /**
      * Sync watcher (design 2026-08-07 §3.3): while connected with a bound
