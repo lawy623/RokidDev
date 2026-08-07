@@ -32,7 +32,7 @@ class SshTerminalSession(
     @Volatile
     private var viewport = TerminalViewport.default()
 
-    fun connect(config: EndpointProfile, identity: DeviceKeyStore.Identity) {
+    fun connect(config: EndpointProfile, identity: DeviceKeyStore.Identity, legacy: Boolean = false) {
         executor.execute {
             disconnectInternal()
             try {
@@ -88,7 +88,7 @@ class SshTerminalSession(
                 channel = newChannel
                 input = output
                 applyViewport(newChannel, viewport)
-                output.write((config.remoteCommand + "\r").toByteArray())
+                output.write(((if (legacy) config.legacyRemoteCommand else config.remoteCommand) + "\r").toByteArray())
                 output.flush()
                 onState("CONNECTED")
 

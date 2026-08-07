@@ -18,7 +18,30 @@ data class EndpointProfile(
         get() = id.isNotBlank() && name.isNotBlank() && host.isNotBlank() &&
             user.isNotBlank() && user.lowercase() !in FORBIDDEN_USERS && knownHost.isNotBlank()
 
+    /**
+     * Attach-only command (design 2026-08-07): ensures the tmux session
+     * exists as a plain shell and attaches. The server helper
+     * (`rokid-sessions switch`) owns launching Claude with the chosen
+     * folder/session; this command no longer starts it.
+     */
     val remoteCommand: String
+        get() {
+            val safeSession = sessionName.replace(Regex("[^A-Za-z0-9_.-]"), "-")
+            val ensureSession = "(tmux has-session -t $safeSession 2>/dev/null || " +
+                "tmux new-session -d -s $safeSession -c ${shellQuote(workspace)})"
+            val configureStatus = TMUX_STATUS_OPTIONS.joinToString(" && ") { (option, value) ->
+                "tmux set-option -t $safeSession $option ${shellQuote(value)}"
+            }
+            return "$ensureSession && $configureStatus && exec tmux attach-session -t $safeSession"
+        }
+
+    /**
+     * Fallback used only when the session helper is unreachable: the
+     * previous behavior — create the session running the fixed launcher in
+     * the workspace. The sync watcher later reconciles the conversation
+     * binding to the session Claude actually created.
+     */
+    val legacyRemoteCommand: String
         get() {
             val safeWorkspace = shellQuote(workspace)
             val safeSession = sessionName.replace(Regex("[^A-Za-z0-9_.-]"), "-")
