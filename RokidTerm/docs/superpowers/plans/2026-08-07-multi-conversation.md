@@ -2829,6 +2829,10 @@ git commit -m "feat: conversation delete via armed selector"
 
 **Files:**
 - Modify: `RokidTerm/rules/composer.md` — palette contract: the `[切换对话]` local action item, `/resume`+`/continue` removal, and a pointer to the session-picker section.
+### Task 10: Docs sync
+
+**Files:**
+- Modify: `RokidTerm/rules/composer.md` — palette contract: the `[切换对话]` local action item, `/resume`+`/continue` removal, and a pointer to the session-picker section.
 - Modify: `RokidTerm/rules/input.md` — conversation-picker key contract (Part 4 table: navigate/confirm/cancel per device, strict isolation, GO double cancel via arbitration).
 - Modify: `RokidTerm/rules/rendering.md` — scrollback persistence keyed per conversation; file layout; 30-file LRU; sync watcher.
 - Modify: `RokidTerm/CLAUDE.md` — Implemented section (2026-08-08), Open/pending: mark session-resume in progress with the design/plan links, and the per-conversation keying note; update the "keyed per endpoint today" sentence in the scrollback bullet.
