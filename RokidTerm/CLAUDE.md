@@ -331,3 +331,7 @@ Before a hardware handoff, verify:
 - Host-key rejection, public-key authentication, reconnect, tmux resume, Back behavior, focus, and the default 480x640 -> 46x30 redraw all behave correctly.
 - No API keys, private keys, Claude output, or source code are printed to logcat.
 - A release build disables debugging and removes `run-as` provisioning/debug inspection paths before long-term use.
+- Input history is per-conversation (2026-08-08): each conversation owns its
+  own draft cache file `input_history_<folderKey>_<sessionId>.txt` (50
+  entries); the legacy global `input_history.txt` was DISCARDED (user
+  decision — test drafts only, no migration).
