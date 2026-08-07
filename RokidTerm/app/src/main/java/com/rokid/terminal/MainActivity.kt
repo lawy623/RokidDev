@@ -78,6 +78,9 @@ class MainActivity : Activity() {
      *  (user 2026-08-08). */
     private var switchInFlight = false
 
+    /** Start of the fresh-switch grace window (watcher rebinds suppressed). */
+    private var lastSwitchNanos = 0L
+
     private var lastScrollbackCount = -1
     private var scrollbackStore: ScrollbackStore? = null
     private var scrollbackFolderKey: String? = null
@@ -1879,6 +1882,12 @@ class MainActivity : Activity() {
         val fetcher = sessionFetcher ?: return
         persistScrollback()
         switchInFlight = true
+        lastSwitchNanos = System.nanoTime()
+        // The session we are switching AWAY from: until a new chat's first
+        // message, the server's "newest session" is still this one, and
+        // neither the discovery loop nor the watcher may "correct" back to
+        // it (bug 1, 2026-08-08).
+        val previousSessionId = scrollbackSessionId
         terminalView.setState(if (thenConnect) "CONNECTING / STARTING" else "SWITCHING…")
         val tmuxSession = endpoint.sessionName
         val workspace = endpoint.workspace
@@ -1901,7 +1910,7 @@ class MainActivity : Activity() {
                     // file appears only later) — discover and correct the
                     // binding so resumes work and rows don't duplicate
                     // (bug 1, 2026-08-08).
-                    if (isNew) discoverNewSessionId(folderPath, sessionId)
+                    if (isNew) discoverNewSessionId(folderPath, sessionId, previousSessionId)
                     // Resumed conversations get their FULL transcript pulled
                     // into the local scrollback (the server replay is a
                     // redraw, not a scroll, so nothing is captured locally —
@@ -1984,7 +1993,7 @@ class MainActivity : Activity() {
      * file, which caused duplicate-looking rows, failed resumes, and a wrong
      * ▶ marker (bug 1, 2026-08-08). Session ids are never logged.
      */
-    private fun discoverNewSessionId(folderPath: String, tempSessionId: String) {
+    private fun discoverNewSessionId(folderPath: String, tempSessionId: String, previousSessionId: String?) {
         val endpoint = activeEndpoint ?: return
         val fetcher = sessionFetcher ?: return
         val folderKey = ServerSessionFetcher.encodeDir(folderPath)
@@ -1996,6 +2005,10 @@ class MainActivity : Activity() {
                 if (ServerSessionFetcher.encodeDir(cwd) != folderKey) continue
                 val realId = status.sessionId ?: continue
                 if (realId == tempSessionId || realId.isEmpty()) continue
+                // Before the new chat's first message the server's newest
+                // session is still the one we switched away from — never
+                // "correct" back to it (bug 1, 2026-08-08).
+                if (realId == previousSessionId) continue
                 runOnUiThread {
                     if (scrollbackSessionId == tempSessionId) {
                         persistScrollback()
@@ -2100,6 +2113,14 @@ class MainActivity : Activity() {
             val status = fetcher.status(endpoint.sessionName)
             runOnUiThread {
                 if (status == null || status.cwd == null) return@runOnUiThread
+                // Fresh-switch grace: a new conversation's JSONL only appears
+                // on its first message, so until then the server's "newest
+                // session" is still the PREVIOUS conversation — rebinding
+                // would clobber the fresh binding, point ▶ at the old chat,
+                // and import the old history into the new one (bug 1,
+                // 2026-08-08). discoverNewSessionId handles the real-id
+                // correction during this window.
+                if (System.nanoTime() - lastSwitchNanos < SWITCH_GRACE_NANOS) return@runOnUiThread
                 val folderKey = scrollbackFolderKey ?: return@runOnUiThread
                 val sessionId = scrollbackSessionId ?: return@runOnUiThread
                 val newFolderKey = ServerSessionFetcher.encodeDir(status.cwd)
@@ -2235,6 +2256,15 @@ class MainActivity : Activity() {
 
         /** Sync-watcher poll interval (design 2026-08-07 §3.3); see [sessionSyncRunnable]. */
         const val SESSION_SYNC_MS = 30_000L
+
+        /**
+         * After a conversation switch the watcher suppresses rebinds for this
+         * long: a new conversation's JSONL appears only on its first message,
+         * so before that the server's newest session is still the previous
+         * conversation (bug 1, 2026-08-08). discoverNewSessionId corrects the
+         * real id during this window.
+         */
+        private const val SWITCH_GRACE_NANOS = 90L * 1_000_000_000L
         /** Prefs file for the remembered conversation target (see [rememberTarget]). */
         private const val SESSION_PREFS = "session_picker"
 
