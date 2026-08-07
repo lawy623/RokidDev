@@ -247,6 +247,14 @@ Verified on the current glasses and Tencent Cloud server:
   `rokid-sessions` helper, per-conversation scrollback keying, sync
   watcher); design doc: `.superpowers/sdd/2026-08-07-multi-conversation/`,
   plan docs in the same directory.
+- **Concurrent sessions (option B)** — each conversation gets its OWN tmux
+  session + Claude process; switching re-attaches instead of
+  kill+respawn, so a long-running task keeps executing while the user
+  works in another conversation (user decision 2026-08-08: implement after
+  the current multi-conversation feature finishes device verification).
+  Design notes: helper `switch` gains attach semantics, unique session
+  names per conversation, local scrollback binding unchanged, cap
+  concurrent processes (~2-3) for server resources.
 - **Claude interactive panels with input fields** — panels that combine a
   list with a text input (e.g. the option panels Claude Code shows for
   choosing an implementation approach) are NOT yet handled; not observed in
