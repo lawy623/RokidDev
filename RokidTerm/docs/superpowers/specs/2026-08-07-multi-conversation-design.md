@@ -191,3 +191,75 @@ conversation is preserved; only the running tool call is lost).
   §3.2 scrollback re-keying.
 - User 2026-08-07: two layers; pick at connect; in-session via palette (no new
   keys); server+local sync guaranteed → §3.
+
+## 8. Final implementation notes (2026-08-08, hardware-verified)
+
+The design was implemented and verified on the real glasses + Tencent Cloud
+server. Deviations and additions discovered during implementation:
+
+### 8.1 Session-id bookkeeping (bug 1 saga)
+
+- The app-generated UUID (passed via `--session-id`) does NOT reliably match
+  the server's real session file: `--session-id` can be ignored, and the
+  JSONL only appears after the FIRST message.
+- Consequences fixed: placeholder rows duplicating real rows in the picker,
+  failed resumes (wrong id), ▶ marker stuck on the old conversation, and the
+  new chat importing the old conversation's history.
+- Fixes: (a) `discoverNewSessionId` — after a new-chat switch, poll `status`
+  (~12 s) for the real id and rebind (persist/remember/▶/cache/input-history
+  key); it never "corrects" back to the pre-switch session. (b) the 30 s
+  sync watcher has a 90 s fresh-switch grace during which it suppresses
+  rebinds (before the new file appears, the server's newest session is the
+  PREVIOUS conversation — rebinding clobbers the fresh binding).
+- `rememberNewSessionInCache` inserts a `New chat` placeholder so the new
+  chat is visible instantly; after the first send, `refreshNewChatTitleIfNeeded`
+  refetches so the real first-message title replaces it without exiting.
+- The in-session switcher starts its cursor on the current (▶) conversation
+  (the connect flow keeps the `+ New Chat` default).
+
+### 8.2 Scrollback browsing for resumed conversations
+
+- The server replay is a redraw, not a scroll — nothing is captured locally,
+  so a resumed conversation was unbrowsable. The helper gained an `export`
+  verb (validated like `delete`; user messages `❯`-prefixed, assistant text
+  plain, slash commands collapsed, tool results skipped, ~2000 newest lines).
+- `bindScrollback` now RESETS the screen state first (the stale alt-screen
+  flag blocked the import) and imports the local file; on RESUME the app
+  additionally pulls the export and force-imports it (works while the alt
+  screen is active) — full-history browsing.
+- Rewritten (compacted) transcripts keep assistant content under
+  `message.content` too — the export handles both shapes (without this,
+  history showed only the ❯ user lines).
+
+### 8.3 Input isolation + storage bounds
+
+- Input history is per-conversation (`input_history_<folderKey>_<sessionId>.txt`,
+  50 entries, 30-file LRU prune); the legacy global file was discarded
+  (user decision). Scrollback: ≤1000 rows/file, ≤30 files/endpoint LRU.
+- Voice audio never touches disk (in-memory PCM → server ASR).
+- Debug trace files ring-bounded at 256 KB each (remove before release).
+
+### 8.4 Input locks
+
+- Delete: `DELETING…`/`PLEASE WAIT` state locks the picker; the ▶ current
+  conversation can never be armed (toast `CURRENT SESSION NOT DELETABLE`;
+  the server helper also refuses the active session).
+- Switch: `switchInFlight` consumes ALL input during a switch — keyDown,
+  keyUp (incl. GO arbitration), key-multiple, long-press/Shutter broadcasts,
+  composer/picker opens, Back.
+
+### 8.5 Firmware lessons (shared knowledge, root CLAUDE.md)
+
+- JSch exec channels never deliver EOF on this firmware — read with a quiet
+  period, never discard on timeout.
+- `ByteArrayOutputStream.toString(Charset)` is API 33+ and missing (an
+  `Error`, not catchable as Exception) — use `toString("UTF-8")`.
+- `drawRingIcon` leaves `Paint.Style.STROKE` — later fills must set FILL
+  explicitly (the "transparent picker" bug).
+- `$HELPER ... || true` before appended arguments swallows the verb.
+
+### 8.6 Deferred
+
+- Concurrent sessions (option B: one tmux session + Claude process per
+  conversation, switch = re-attach, tasks keep running) — TODO after this
+  feature's verification; see RokidTerm CLAUDE.md Open/pending.

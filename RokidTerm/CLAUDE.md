@@ -227,6 +227,36 @@ Verified on the current glasses and Tencent Cloud server:
   so a later fill rect drawn without an explicit `Paint.Style.FILL` renders
   as a hollow outline — the "transparent picker" bug (2026-08-08).
 
+### Hardware-verified 2026-08-08 (evening round — conversation lifecycle)
+
+- Session-id convergence: the app-generated UUID (via `--session-id`) may
+  not match the server's real session file (the JSONL appears only on the
+  first message). `discoverNewSessionId` polls `status` after a new-chat
+  switch and rebinds to the REAL id (persist/remember/▶/cache/input-history
+  key), never reverting to the pre-switch session; the 30 s sync watcher
+  suppresses rebinds during a 90 s fresh-switch grace.
+- New chats appear instantly via a `New chat` cache placeholder; after the
+  first send, `refreshNewChatTitleIfNeeded` refetches so the real title
+  replaces it without exiting the terminal.
+- The folder-list refresh applies live at BOTH levels (new folders/new chats
+  appear while browsing, position preserved by path/session id).
+- The in-session switcher starts its cursor on the current (▶) conversation;
+  the connect flow keeps the `+ New Chat` default.
+- Scrollback: `bindScrollback` resets the screen state first (stale
+  alt-screen flag blocked imports); resumed conversations pull the full
+  transcript via the helper's `export` verb and force-import it (assistant
+  messages included — rewritten transcripts keep them under
+  `message.content`).
+- Input locks: delete (`DELETING…`/`PLEASE WAIT`, picker locked, ▶ current
+  never armed) and switch (`switchInFlight` consumes ALL input: keyDown/
+  keyUp incl. GO arbitration, key-multiple, long-press/Shutter broadcasts,
+  composer/picker opens, Back).
+- Storage bounds: per-conversation input history (50 entries, 30-file LRU
+  prune), scrollback (1000 rows/file, 30 files/endpoint), voice never on
+  disk, debug traces ring-bounded 256 KB.
+- Full implementation notes: `docs/superpowers/specs/2026-08-07-multi-
+  conversation-design.md` §8.
+
 ### Hardware-verified 2026-08-08 (real server + glasses)
 
 - The JSch exec channel on this firmware does NOT deliver EOF: the remote
