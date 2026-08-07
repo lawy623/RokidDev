@@ -925,6 +925,9 @@ class TerminalView(context: Context) : View(context) {
             val itemIndex = windowStart + i
             val rowTop = listTop + i * rowHeight
             var text = items[itemIndex]
+            if (sessionPickerUi.deleteArmed && sessionPickerUi.level == 1 && itemIndex == selected) {
+                text = "$text 删除?"
+            }
             if (itemIndex == selected) {
                 paint.style = Paint.Style.FILL
                 paint.color = Color.GREEN
@@ -962,16 +965,39 @@ class TerminalView(context: Context) : View(context) {
             canvas.drawRect(right - 13f, thumbTop, right - 9f, thumbTop + thumbHeight, paint)
         }
 
-        paint.alpha = 175
-        paint.textSize = 11f
-        canvas.drawLine(left + 10f, bottom - 60f, right - 10f, bottom - 60f, paint)
-        val hint = if (sessionPickerUi.level == 0) {
-            "UP/DOWN SELECT   CONFIRM OPEN"
+        if (sessionPickerUi.deleteArmed && sessionPickerUi.level == 1) {
+            paint.alpha = 255
+            paint.textSize = 16f
+            val cancelText = if (sessionPickerUi.deleteOption == 0) "◀ 取消" else "取消"
+            val deleteText = if (sessionPickerUi.deleteOption == 1) "删除 ▶" else "删除"
+            val midX = (left + right) / 2f
+            paint.style = Paint.Style.FILL
+            paint.color = Color.GREEN
+            paint.alpha = 90
+            if (sessionPickerUi.deleteOption == 0) {
+                canvas.drawRect(left + 4f, bottom - 92f, midX, bottom - 62f, paint)
+            } else {
+                canvas.drawRect(midX, bottom - 92f, right - 4f, bottom - 62f, paint)
+            }
+            paint.style = Paint.Style.FILL
+            paint.alpha = 255
+            canvas.drawText(cancelText, left + 12f, bottom - 68f, paint)
+            canvas.drawText(deleteText, right - 12f - paint.measureText("删除"), bottom - 68f, paint)
+            paint.alpha = 175
+            paint.textSize = 11f
+            canvas.drawText("SWIPE SELECT   CONFIRM DELETE   CANCEL UNMARK", left + 12f, bottom - 36f, paint)
         } else {
-            "CONFIRM SWITCH   BACK = UP"
+            paint.alpha = 175
+            paint.textSize = 11f
+            canvas.drawLine(left + 10f, bottom - 60f, right - 10f, bottom - 60f, paint)
+            val hint = if (sessionPickerUi.level == 0) {
+                "UP/DOWN SELECT   CONFIRM OPEN"
+            } else {
+                "CONFIRM SWITCH   BACK = UP"
+            }
+            canvas.drawText(hint, left + 12f, bottom - 36f, paint)
+            canvas.drawText("BACK / KNOB-R / GO-DOUBLE CANCEL", left + 12f, bottom - 15f, paint)
         }
-        canvas.drawText(hint, left + 12f, bottom - 36f, paint)
-        canvas.drawText("BACK / KNOB-R / GO-DOUBLE CANCEL", left + 12f, bottom - 15f, paint)
         resetPaint()
     }
 
@@ -1090,4 +1116,6 @@ data class SessionPickerUi(
     val sessionIndex: Int = 0,
     val currentFolderPath: String? = null,
     val currentSessionId: String? = null,
+    val deleteArmed: Boolean = false,
+    val deleteOption: Int = 0,
 )
