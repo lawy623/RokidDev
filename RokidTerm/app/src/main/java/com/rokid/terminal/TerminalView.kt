@@ -868,6 +868,10 @@ class TerminalView(context: Context) : View(context) {
         val top = 90f
         val bottom = height.toFloat()
 
+        // Explicit FILL: drawRingIcon/drawKeyboardIcon leave paint.style =
+        // STROKE, so an implicit fill here silently draws nothing — the
+        // "transparent picker" bug (2026-08-08, ring connected).
+        paint.style = Paint.Style.FILL
         paint.color = Color.BLACK
         paint.alpha = 255
         canvas.drawRect(left, top, right, bottom, paint)

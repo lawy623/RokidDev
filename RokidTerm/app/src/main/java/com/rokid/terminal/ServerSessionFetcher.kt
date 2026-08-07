@@ -83,7 +83,15 @@ class ServerSessionFetcher(
             channel.setCommand(command)
             val stdout = channel.inputStream
             channel.connect(5_000)
-            readAll(stdout, timeoutMs)
+            val out = readAll(stdout, timeoutMs)
+            // Diagnostic (length + exit only; never log helper content):
+            // on-device "empty list" investigation 2026-08-08.
+            android.util.Log.i(
+                "RokidTerminal",
+                "session helper: len=${out?.length ?: -1} " +
+                    "exit=${runCatching { channel.exitStatus }.getOrDefault(-999)}",
+            )
+            out
         } catch (error: Exception) {
             android.util.Log.w("RokidTerminal", "session helper failed: ${error.message ?: error.javaClass.simpleName}")
             null
@@ -93,27 +101,50 @@ class ServerSessionFetcher(
         }
     }
 
-    private fun readAll(stdout: java.io.InputStream, timeoutMs: Int): String? {
+    /**
+     * Reads until EOF, a quiet period, or the deadline. On this device the
+     * JSch exec channel's EOF does NOT arrive (the remote command exits 0,
+     * its output is delivered via available/read, but EOF never comes) — so
+     * waiting for EOF alone burns the whole timeout, and discarding on
+     * timeout threw away real data (fixed 2026-08-08, on-device evidence:
+     * len=-1 exit=0). Return once the stream has been quiet for QUIET_MS.
+     * Only transport exceptions yield null (handled in run()).
+     */
+    private fun readAll(stdout: java.io.InputStream, timeoutMs: Int): String {
         val bytes = ByteArrayOutputStream()
         val buffer = ByteArray(4096)
         val deadline = System.currentTimeMillis() + timeoutMs
+        var quietSince = System.currentTimeMillis()
         while (System.currentTimeMillis() < deadline) {
             if (stdout.available() > 0) {
                 val count = stdout.read(buffer, 0, buffer.size)
-                if (count < 0) return bytes.toString(Charsets.UTF_8)
+                if (count < 0) break
                 bytes.write(buffer, 0, count)
+                quietSince = System.currentTimeMillis()
             } else {
+                if (System.currentTimeMillis() - quietSince > QUIET_MS) break
                 Thread.sleep(50)
             }
         }
-        return null // timed out without EOF
+        // toString(Charset) is API 33+ and missing on this Rokid firmware
+        // (NoSuchMethodError — an Error, not an Exception, so it crashed the
+        // fetch thread; fixed 2026-08-08). Use the legacy overload.
+        return bytes.toString("UTF-8")
     }
 
     companion object {
-        /** Server helper run on the endpoint's terminal user. */
-        const val HELPER = "/home/rokid/bin/rokid-sessions 2>/dev/null || true"
+        /**
+         * Server helper run on the endpoint's terminal user. NOTE: no
+         * `|| true` here — the app appends the verb AFTER this constant
+         * (`$HELPER list ...`); a `|| true` in the middle swallows the verb
+         * (the shell runs the helper with no args and `true` wins). Fixed
+         * 2026-08-08 after on-device discovery: every verb invocation
+         * failed, so the picker only ever showed the /srv fallback.
+         */
+        const val HELPER = "/home/rokid/bin/rokid-sessions 2>/dev/null"
         private const val FETCH_TIMEOUT_MS = 15_000
         private const val SWITCH_TIMEOUT_MS = 25_000
+        private const val QUIET_MS = 750L
 
         /**
          * Claude Code's project-dir encoding: every non-alphanumeric char

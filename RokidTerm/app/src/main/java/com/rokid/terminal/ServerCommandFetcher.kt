@@ -70,7 +70,7 @@ class ServerCommandFetcher(
                 Thread.sleep(50)
             }
         }
-        return parseLines(bytes.toString(Charsets.UTF_8))
+        return parseLines(bytes.toString("UTF-8"))
     }
 
     /** One command per line; `#` comments and blanks ignored. */
