@@ -204,3 +204,31 @@ adb logcat | rg 'RokidInput|InputReader|InputDispatcher|WindowManager'
 
 验证记录（2026-08-05）：拦截后 logcat 出现 `system key intercepted: long-press/shutter`，
 系统助手与相机零启动；长按在输入框内触发发送、快门触发删除。
+
+## 9. 实测：TP 快滑发出 DPAD 配对（2026-08-08，RokidTerminal 设备实测）
+
+当前固件（`ROKID,PSOC-TP-R`）上，**快速滑动一次会同时发出两个 KeyEvent**（几毫秒内配对到达）：
+
+| 物理动作 | 发出的 KeyEvent 对 |
+|---|---|
+| TP 快滑右 | `KEYCODE_DPAD_RIGHT`(22) + `KEYCODE_DPAD_DOWN`(20) |
+| TP 快滑左 | `KEYCODE_DPAD_LEFT`(21) + `KEYCODE_DPAD_UP`(19) |
+
+（与官方文档"TP 快滑右 = DPAD_RIGHT + DPAD_DOWN"一致，实测确认。）
+
+**对列表导航的影响**：没有去重的应用，一次快滑会移动**两项**（配对里的两个键各触发一次导航）。
+
+**修复模式**（RokidTerm 面板模式与对话选择器均采用）：同方向 120 ms 内去重——
+
+```kotlin
+// 快滑配对去重：同方向 120ms 内的第二个键忽略
+val arrow = if (next) "down" else "up"
+val now = SystemClock.uptimeMillis()
+if (arrow == lastArrow && now - lastArrowTime < 120) return
+lastArrow = arrow
+lastArrowTime = now
+move(if (next) 1 else -1)
+```
+
+- **慢滑**：连续单事件（每个事件移动一项），不受去重影响；
+- **Ring 滑动**：单事件，无配对，不需要去重（且到达码反转，见 RokidTerm `rules/input.md`）。
