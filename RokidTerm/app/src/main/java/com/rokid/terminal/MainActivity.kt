@@ -302,6 +302,7 @@ class MainActivity : Activity() {
     override fun onDestroy() {
         persistScrollback()
         mainHandler.removeCallbacks(keyboardPoll)
+        mainHandler.removeCallbacks(sessionSyncRunnable)
         runCatching { unregisterReceiver(inputDeviceReceiver) }
         clearPrimaryGesture()
         speech.destroy()
@@ -1247,11 +1248,29 @@ class MainActivity : Activity() {
      * double via handleGoKey). Strict isolation: everything else is
      * consumed while the picker is open.
      */
+    private var pickerPrimaryPending: Runnable? = null
+
+    private fun pickerPrimaryPressed() {
+        val pending = pickerPrimaryPending
+        if (pending != null) {
+            // Double-tap: cancel (user contract: TP double = cancel).
+            mainHandler.removeCallbacks(pending)
+            pickerPrimaryPending = null
+            sessionPickerCancel()
+        } else {
+            val single = Runnable {
+                pickerPrimaryPending = null
+                sessionPickerConfirm()
+            }
+            pickerPrimaryPending = single
+            mainHandler.postDelayed(single, ViewConfiguration.getDoubleTapTimeout().toLong())
+        }
+    }
+
     private fun handleSessionPickerKey(keyCode: Int, event: KeyEvent): Boolean = when (keyCode) {
-        KeyEvent.KEYCODE_2, KeyEvent.KEYCODE_5,
-        KeyEvent.KEYCODE_4, KeyEvent.KEYCODE_6 -> {
+        KeyEvent.KEYCODE_2, KeyEvent.KEYCODE_5 -> {
             if (event.repeatCount == 0) {
-                sessionPickerMove(if (keyCode == KeyEvent.KEYCODE_2 || keyCode == KeyEvent.KEYCODE_4) -1 else 1)
+                sessionPickerMove(if (keyCode == KeyEvent.KEYCODE_2) -1 else 1)
             }
             true
         }
@@ -1272,7 +1291,11 @@ class MainActivity : Activity() {
             true
         }
         KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_8 -> {
-            if (event.repeatCount == 0) sessionPickerConfirm()
+            // TP/ring single = confirm after the double-tap window; a second
+            // press within the window = cancel (user contract 2026-08-07).
+            // The ring's touchpad double arrives as KEYCODE_DEL (firmware),
+            // so its ENTER never double-fires — the window only affects TP.
+            if (event.repeatCount == 0) pickerPrimaryPressed()
             true
         }
         KeyEvent.KEYCODE_D, KeyEvent.KEYCODE_BACK -> {
@@ -1309,6 +1332,8 @@ class MainActivity : Activity() {
     }
 
     private fun sessionPickerConfirm() {
+        pickerPrimaryPending?.let(mainHandler::removeCallbacks)
+        pickerPrimaryPending = null
         if (!sessionPicker.open) return
         val target = sessionPicker.confirm()
         sessionPickerSyncToView()
@@ -1321,6 +1346,8 @@ class MainActivity : Activity() {
     }
 
     private fun sessionPickerCancel() {
+        pickerPrimaryPending?.let(mainHandler::removeCallbacks)
+        pickerPrimaryPending = null
         if (!sessionPicker.open) return
         if (sessionPicker.back()) {
             sessionPickerSyncToView()
@@ -1771,12 +1798,12 @@ class MainActivity : Activity() {
         val fetcher = sessionFetcher ?: return
         val endpoint = activeEndpoint ?: return
         if (sshState != "CONNECTED" || sessionPicker.open) return
-        val folderKey = scrollbackFolderKey ?: return
-        val sessionId = scrollbackSessionId ?: return
         Thread {
             val status = fetcher.status(endpoint.sessionName)
             runOnUiThread {
                 if (status == null || status.cwd == null) return@runOnUiThread
+                val folderKey = scrollbackFolderKey ?: return@runOnUiThread
+                val sessionId = scrollbackSessionId ?: return@runOnUiThread
                 val newFolderKey = ServerSessionFetcher.encodeDir(status.cwd)
                 val folderChanged = newFolderKey != folderKey
                 val sessionChanged = status.sessionId != null && status.sessionId != sessionId
