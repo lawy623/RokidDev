@@ -156,6 +156,25 @@ The APK persists on the device after install. Once installed, the app appears in
 - If `adb devices` shows empty even though the device appears in ioreg: run `adb kill-server && adb start-server && adb devices`
 - USB debugging must be enabled on the glasses (Settings → Developer options). If "Developer options" is hidden, tap the build number 7 times in Settings → About
 
+### SSH / Networking (hardware-verified 2026-08-08, via RokidTerm)
+
+- **JSch exec channels never deliver EOF on this firmware.** The remote
+  command exits 0 and its output arrives through `available()`/`read()`,
+  but EOF never comes within the timeout. Readers must return on a quiet
+  period (~750 ms), never wait for EOF or discard accumulated bytes on
+  timeout — the latter silently drops every response. This affects ANY
+  JSch-based SSH terminal/exec code on these glasses.
+- **`java.io.ByteArrayOutputStream.toString(Charset)` does not exist on
+  this firmware** (Android API 33+ method). It throws `NoSuchMethodError`,
+  which is an `Error`, NOT an `Exception` — `catch (Exception)` will NOT
+  catch it and the background thread crashes. Always use
+  `bytes.toString("UTF-8")` (the legacy overload) instead.
+- **Do not put `|| true` before appended command arguments**:
+  `HELPER="cmd 2>/dev/null || true"` + `"$HELPER list ..."` makes the shell
+  run `cmd` with NO arguments and `true` win — every verb invocation fails
+  silently. If the helper must tolerate failure, append `|| true` at the
+  END of the full command, or drop it and rely on the exit status.
+
 ### Sensor (IMU)
 
 Rokid Glass has a **TDK-Invensense icm4x6xx** IMU. Key findings:
@@ -195,6 +214,9 @@ RokidDev/
 └── RokidTerm/
     ├── CLAUDE.md          ← terminal app guidance
     ├── app/src/main/...   ← Android terminal app
+    ├── server/            ← server-side helpers deployed to the endpoint
+    │                        (rokid-commands, rokid-sessions — Claude
+    │                         command list + conversation switcher)
     └── third_party/
         └── asr-server/    ← server-side ASR (FastAPI + SenseVoiceSmall),
                              lives here as a RokidTerm component, not a
