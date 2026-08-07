@@ -103,6 +103,17 @@ class SessionPickerState {
     }
 
     /**
+     * Moves the conversation-level selection to the slot at [index]
+     * (0 = the new-chat slot, then sessions), clamped to the list.
+     * Used by the live list refresh to preserve the user's position by
+     * session id (2026-08-08).
+     */
+    fun selectSession(index: Int) {
+        if (!open || level != 1) return
+        sessionIndex = index.coerceIn(0, conversationCount - 1)
+    }
+
+    /**
      * Level 0: descends to conversations, returns null. Level 1: returns the
      * chosen target (session id null = new conversation). Does NOT close.
      */

@@ -1856,7 +1856,8 @@ class MainActivity : Activity() {
                 if (folders != null && folders.isNotEmpty()) {
                     cachedFolders = folders
                 }
-                if (sessionPicker.open && sessionPicker.level == 0) {
+                val busy = sessionPicker.deleteArmed || sessionPicker.deleteInFlight
+                if (sessionPicker.open && sessionPicker.level == 0 && !busy) {
                     // Apply live ALWAYS at the folder level (a new folder
                     // must appear even if the user navigated — user report
                     // 2026-08-08), restoring the user's current position by
@@ -1865,6 +1866,24 @@ class MainActivity : Activity() {
                     sessionPicker.setFolders(fresh, failed = folders == null)
                     if (selectedPath == null || !sessionPicker.selectFolder(selectedPath)) {
                         sessionPicker.selectFolder(sessionPicker.currentFolderPath)
+                    }
+                    sessionPickerSyncToView()
+                } else if (sessionPicker.open && sessionPicker.level == 1 && !busy) {
+                    // Same at the conversation level: a new chat must appear
+                    // even while the user is already browsing the list
+                    // (bug 1 follow-up, 2026-08-08) — restore the folder by
+                    // path and the selection by session id.
+                    val folderPath = sessionPicker.selectedFolder()?.path
+                    val selectedId = sessionPicker.selectedFolder()?.sessions
+                        ?.getOrNull(sessionPicker.sessionIndex - 1)?.id
+                    sessionPicker.setFolders(fresh, failed = folders == null)
+                    if (folderPath != null && sessionPicker.selectFolder(folderPath)) {
+                        sessionPicker.confirm() // descend into the same folder
+                        if (selectedId != null) {
+                            val index = sessionPicker.selectedFolder()?.sessions
+                                ?.indexOfFirst { it.id == selectedId }
+                            if (index != null && index >= 0) sessionPicker.selectSession(index + 1)
+                        }
                     }
                     sessionPickerSyncToView()
                 }
