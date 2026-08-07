@@ -1,0 +1,261 @@
+#!/usr/bin/env bash
+# RokidTerm conversation switcher (server side; design spec 2026-08-07).
+# Structured tab-separated output; NEVER prints message bodies. Session
+# title = first user message. Requires python3 (session-title extraction)
+# and tmux. Install:
+#   scp server/rokid-sessions <user>@<host>:/home/<user>/bin/rokid-sessions
+#   ssh <user>@<host> chmod +x /home/<user>/bin/rokid-sessions
+set -u
+PROJECTS_DIR="$HOME/.claude/projects"
+CLAUDE_LAUNCHER="/home/rokid/bin/rokid-claude"
+
+encode() { printf '%s' "$1" | tr -c 'A-Za-z0-9' '-'; }
+
+# First user-message text of a session JSONL (single line, control chars
+# stripped, <= 40 chars). Streams; exits at the first user text block.
+first_user_title() {
+  python3 -c '
+import json, sys
+p = sys.argv[1]
+with open(p, encoding="utf-8", errors="replace") as fh:
+    for line in fh:
+        try:
+            e = json.loads(line)
+        except Exception:
+            continue
+        if e.get("type") != "user":
+            continue
+        c = e.get("content")
+        t = ""
+        if isinstance(c, str):
+            t = c
+        else:
+            for b in (c or []):
+                if isinstance(b, dict) and isinstance(b.get("text"), str):
+                    t = b["text"]
+                    break
+        if t:
+            t = "".join(ch if ord(ch) >= 0x20 else " " for ch in t)
+            t = t.replace("\t", " ").strip()
+            print(t[:40])
+            sys.exit(0)
+' "$1" 2>/dev/null
+}
+
+# Newest session id in a project dir, or "-".
+newest_session_id() {
+  local enc="$1" dir="$PROJECTS_DIR/$enc"
+  [ -d "$dir" ] || { echo "-"; return; }
+  local newest
+  newest="$(ls -t "$dir"/*.jsonl 2>/dev/null | head -1)"
+  [ -n "$newest" ] || { echo "-"; return; }
+  basename "$newest" .jsonl
+}
+
+# Descendants of $1 up to 6 levels deep, one pid per line.
+descendants() {
+  local root="$1" level=0
+  local -a frontier=("$root") next=()
+  while [ ${#frontier[@]} -gt 0 ] && [ "$level" -lt 6 ]; do
+    next=()
+    local pid child
+    for pid in "${frontier[@]}"; do
+      echo "$pid"
+      for child in $(pgrep -P "$pid" 2>/dev/null); do
+        next+=("$child")
+      done
+    done
+    # Guard the empty-array expansion: bash <= 4.3 errors on "${next[@]}"
+    # under set -u when the array has no elements.
+    if [ "${#next[@]}" -gt 0 ]; then
+      frontier=("${next[@]}")
+    else
+      frontier=()
+    fi
+    level=$((level + 1))
+  done
+}
+
+# First descendant of the pane whose cmdline mentions claude, or "".
+first_claude_descendant() {
+  local pane_pid="$1" pid
+  for pid in $(descendants "$pane_pid"); do
+    if ps -p "$pid" -o args= 2>/dev/null | grep -q '[c]laude'; then
+      echo "$pid"
+      return
+    fi
+  done
+}
+
+list_base() {
+  local base="$1" bname enc
+  bname="$(cd "$base" 2>/dev/null && pwd -P)" || return 0
+  enc="$(encode "$bname")"
+  printf 'F\t%s\t%s\n' "$bname" "$enc"
+  local d
+  for d in "$bname"/*/; do
+    [ -d "$d" ] || continue
+    local dn="${d%/}"
+    case "$(basename "$dn")" in
+      .*) continue ;;
+    esac
+    printf 'F\t%s\t%s\n' "$dn" "$(encode "$dn")"
+  done
+}
+
+list_sessions() {
+  local enc="$1" dir="$PROJECTS_DIR/$enc"
+  [ -d "$dir" ] || return 0
+  local f
+  for f in "$dir"/*.jsonl; do
+    [ -f "$f" ] || continue
+    local id mtime title
+    id="$(basename "$f" .jsonl)"
+    mtime="$(stat -c %Y "$f" 2>/dev/null || echo 0)"
+    title="$(first_user_title "$f")"
+    printf 'S\t%s\t%s\t%s\t%s\n' "$enc" "$id" "$mtime" "$title"
+  done | sort -t $'\t' -k4 -rn | head -30
+}
+
+cmd_list() {
+  local base="$1"
+  list_base "$base" | while IFS=$'\t' read -r kind path enc; do
+    if [ "$kind" = "F" ]; then
+      printf 'F\t%s\t%s\n' "$path" "$enc"
+      list_sessions "$enc"
+    fi
+  done
+}
+
+cmd_status() {
+  local session="$1" pane_pid claude_pid cwd enc newest
+  pane_pid="$(tmux list-panes -t "$session" -F '#{pane_pid}' 2>/dev/null | head -1)"
+  [ -n "$pane_pid" ] || { echo "none"; return 0; }
+  claude_pid="$(first_claude_descendant "$pane_pid")"
+  [ -n "$claude_pid" ] || { echo "none"; return 0; }
+  cwd="$(readlink -f "/proc/$claude_pid/cwd" 2>/dev/null || true)"
+  [ -n "$cwd" ] || { echo "none"; return 0; }
+  enc="$(encode "$cwd")"
+  newest="$(newest_session_id "$enc")"
+  printf 'pid\t%s\t%s\t%s\n' "$claude_pid" "$cwd" "$newest"
+}
+
+cmd_switch() {
+  local session="$1" base="$2" dir="$3" target="$4"
+  local base_resolved dir_resolved
+  base_resolved="$(cd "$base" 2>/dev/null && pwd -P)" || { echo "error\tbase not accessible"; return 1; }
+  dir_resolved="$(cd "$dir" 2>/dev/null && pwd -P)" || { echo "error\tpath not accessible"; return 1; }
+  # Validate the RESOLVED dir (handles .. and symlinks): base itself or a
+  # path under it. ${var#prefix} literal-removal avoids case-pattern glob
+  # metacharacters in the base path.
+  if [ "$dir_resolved" = "$base_resolved" ] ||
+     [ "${dir_resolved#"$base_resolved"/}" != "$dir_resolved" ]; then
+    : # ok
+  else
+    echo "error\tpath outside base"; return 1
+  fi
+
+  local id launch_args
+  case "$target" in
+    resume:*)
+      id="${target#resume:}"
+      case "$id" in
+        *[!A-Za-z0-9_-]*) echo "error\tbad session id"; return 1 ;;
+      esac
+      launch_args="--resume $id"
+      ;;
+    new:*)
+      id="${target#new:}"
+      case "$id" in
+        *[!A-Za-z0-9-]*) echo "error\tbad session id"; return 1 ;;
+      esac
+      launch_args="--session-id $id"
+      ;;
+    *)
+      echo "error\tbad target"; return 1 ;;
+  esac
+
+  local launch_cmd="$CLAUDE_LAUNCHER --effort max --dangerously-skip-permissions $launch_args"
+
+  # Ensure the tmux session, then start Claude in its pane: respawn when a
+  # session exists (kills the previous Claude), create otherwise. Fall back
+  # to kill+send-keys if respawn-pane is unavailable.
+  if tmux has-session -t "$session" 2>/dev/null; then
+    if ! tmux respawn-pane -t "$session" -k -c "$dir_resolved" "$launch_cmd" 2>/dev/null; then
+      local pane_pid claude_pid
+      pane_pid="$(tmux list-panes -t "$session" -F '#{pane_pid}' 2>/dev/null | head -1)"
+      [ -n "$pane_pid" ] || { echo "error\tno tmux pane"; return 1; }
+      claude_pid="$(first_claude_descendant "$pane_pid")"
+      if [ -n "$claude_pid" ]; then
+        kill "$claude_pid" 2>/dev/null
+        sleep 1
+        kill -0 "$claude_pid" 2>/dev/null && kill -9 "$claude_pid" 2>/dev/null
+        sleep 1
+      fi
+      local qdir
+      qdir="$(printf '%q' "$dir_resolved")"
+      tmux send-keys -t "$session" "cd $qdir && $launch_cmd" Enter
+    fi
+  else
+    tmux new-session -d -s "$session" -c "$dir_resolved" "$launch_cmd"
+  fi
+
+  # Verify: a Claude process whose cwd is the target dir (poll <= 15 s).
+  local i ok=""
+  for i in $(seq 1 30); do
+    local pane_pid2 claude_pid2 cwd2
+    pane_pid2="$(tmux list-panes -t "$session" -F '#{pane_pid}' 2>/dev/null | head -1)"
+    [ -n "$pane_pid2" ] || break
+    claude_pid2="$(first_claude_descendant "$pane_pid2")"
+    if [ -n "$claude_pid2" ]; then
+      cwd2="$(readlink -f "/proc/$claude_pid2/cwd" 2>/dev/null || true)"
+      if [ "$cwd2" = "$dir_resolved" ]; then
+        ok="$claude_pid2"
+        break
+      fi
+    fi
+    sleep 0.5
+  done
+  [ -n "$ok" ] || { echo "error\tclaude did not start"; return 1; }
+
+  # resume: the session file must exist (a fresh session's JSONL appears on
+  # the first message, so for new: pid+cwd above is enough).
+  case "$target" in
+    resume:*)
+      local enc expected
+      enc="$(encode "$dir_resolved")"
+      expected="$PROJECTS_DIR/$enc/$id.jsonl"
+      for i in $(seq 1 10); do
+        [ -f "$expected" ] && break
+        sleep 0.5
+      done
+      [ -f "$expected" ] || { echo "error\tsession file missing"; return 1; }
+      ;;
+  esac
+
+  printf 'ok\t%s\t%s\n' "$(encode "$dir_resolved")" "$id"
+}
+
+main() {
+  local verb="${1:-}"
+  case "$verb" in
+    list)
+      [ $# -ge 2 ] || { echo "error\tusage: list <base-dir>"; return 1; }
+      cmd_list "$2"
+      ;;
+    status)
+      [ $# -ge 2 ] || { echo "error\tusage: status <tmux-session>"; return 1; }
+      cmd_status "$2"
+      ;;
+    switch)
+      [ $# -ge 5 ] || { echo "error\tusage: switch <tmux-session> <base-dir> <real-dir> <resume:id|new:uuid>"; return 1; }
+      cmd_switch "$2" "$3" "$4" "$5"
+      ;;
+    *)
+      echo "error\tunknown verb"
+      return 1
+      ;;
+  esac
+}
+
+main "$@"
