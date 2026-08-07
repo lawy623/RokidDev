@@ -326,6 +326,23 @@ import json, re, sys
 path = sys.argv[1]
 MAX = 2000
 out = []
+
+def emit_block(lines, prefix):
+    # Trim the block's leading/trailing blank lines, then emit it separated
+    # from the previous block by one blank row (layout: input and output
+    # blocks are visually distinct — user 2026-08-08).
+    while lines and not lines[0].strip():
+        lines.pop(0)
+    while lines and not lines[-1].strip():
+        lines.pop()
+    if not lines:
+        return
+    if out:
+        out.append("")
+    for ln in lines:
+        clean = "".join(ch if ord(ch) >= 0x20 else " " for ch in ln)
+        out.append((prefix + clean[:100]) if clean.strip() else "")
+
 with open(path, encoding="utf-8", errors="replace") as fh:
     for line in fh:
         try:
@@ -359,12 +376,7 @@ with open(path, encoding="utf-8", errors="replace") as fh:
                 text = name.group(1).strip() + (" " + a if a else "")
             # Local-command stdout wrapper: keep only the inner text.
             text = re.sub(r"</?local-command-stdout>", "", text)
-            for ln in text.splitlines():
-                clean = "".join(ch if ord(ch) >= 0x20 else " " for ch in ln)
-                # BLANK LINES ARE LAYOUT: the live conversation shows empty
-                # rows between turns/paragraphs; drop them in the export and
-                # the history view compresses (user report 2026-08-08).
-                out.append(("❯ " + clean[:100]) if clean.strip() else "")
+            emit_block(text.splitlines(), "❯ ")
         elif t == "assistant":
             # Rewritten (compacted) transcripts put assistant content under
             # "message"."content" too — without this the assistant replies
@@ -382,10 +394,7 @@ with open(path, encoding="utf-8", errors="replace") as fh:
                 continue
             for b in blocks:
                 if isinstance(b, dict) and isinstance(b.get("text"), str):
-                    for ln in b["text"].splitlines():
-                        clean = "".join(ch if ord(ch) >= 0x20 else " " for ch in ln)
-                        # Blank lines preserved (layout), see user branch.
-                        out.append(clean[:100] if clean.strip() else "")
+                    emit_block(b["text"].splitlines(), "")
         if len(out) > MAX * 2:
             del out[: len(out) - MAX * 2]
 print("\n".join(out[-MAX:]))

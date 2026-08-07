@@ -21,6 +21,20 @@ class TerminalOutputProcessor(
         maxScrollbackRows = maxScrollbackRows,
     )
     private var revision = 0L
+
+    /** Scroll capture is suppressed until this nanoTime (resume replay). */
+    private var suppressCaptureUntilNanos = 0L
+
+    /**
+     * Suppresses scroll capture for [durationMs] — called after a
+     * conversation switch, because the resume replay scrolls the viewport
+     * and would duplicate the imported transcript in the scrollback
+     * (2026-08-08). The screen still renders normally.
+     */
+    @Synchronized
+    fun suppressScrollCaptureFor(durationMs: Long) {
+        suppressCaptureUntilNanos = nanoTime() + durationMs * 1_000_000L
+    }
     private var scrollOffsetRows = 0
     private var hasNewOutput = false
 
@@ -87,18 +101,23 @@ class TerminalOutputProcessor(
         val appendedBefore = screen.scrollbackRowsAppended()
         val altBefore = screen.isAlternateActive()
         val now = nanoTime()
+        val captureSuppressed = now < suppressCaptureUntilNanos
         // Claude Code re-renders by overwriting cells (no scroll escapes), so
         // scrolled-out rows are found by comparing against the last settled
         // screen. The baseline is taken only after a quiet pause: renders
         // split across network reads produce partial frames, and the attach
         // redraw burst must settle before any comparison — a mid-burst
         // baseline would fabricate duplicate history rows.
-        if (altBefore && now - lastConsumeNanos > quietRedrawNanos) {
+        // Capture is ALSO suppressed for a window after a conversation switch:
+        // the resume replay genuinely SCROLLS (the conversation exceeds the
+        // viewport) and would otherwise duplicate the imported transcript
+        // (user report 2026-08-08 — 3 turns showed as 5).
+        if (altBefore && !captureSuppressed && now - lastConsumeNanos > quietRedrawNanos) {
             scrollBaseline = screen.snapshotRows()
         }
         lastConsumeNanos = now
         screen.consume(raw)
-        if (screen.isAlternateActive() && scrollBaseline.isNotEmpty()) {
+        if (!captureSuppressed && screen.isAlternateActive() && scrollBaseline.isNotEmpty()) {
             val afterRows = screen.snapshotRows()
             val capture = findScrollCapture(scrollBaseline, afterRows)
             if (capture != null) {

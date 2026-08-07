@@ -126,13 +126,20 @@ class TerminalScreen(
         val offset = scrollOffsetRows.coerceIn(0, scrollback.size)
         if (offset == 0) return active.cells.map { it.toList() }
 
+        // While browsing, ONLY the scrollback is shown — the live screen is
+        // NOT appended. Imported transcripts contain the full conversation
+        // (including the tail the live screen also shows), so mixing them
+        // duplicated the visible turns (user report 2026-08-08: 3 turns
+        // appeared as 5). Rows beyond the scrollback are blank; offset 0 is
+        // the live screen.
         val viewportStart = scrollback.size - offset
+        val blank = Array(columns) { TerminalCell() }
         return List(rows) { viewportRow ->
             val combinedRow = viewportStart + viewportRow
             if (combinedRow < scrollback.size) {
                 scrollback[combinedRow].toList()
             } else {
-                active.cells[combinedRow - scrollback.size].toList()
+                blank.toList()
             }
         }
     }

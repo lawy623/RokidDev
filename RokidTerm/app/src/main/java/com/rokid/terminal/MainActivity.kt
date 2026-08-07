@@ -1913,6 +1913,10 @@ class MainActivity : Activity() {
         persistScrollback()
         switchInFlight = true
         lastSwitchNanos = System.nanoTime()
+        // The resume replay genuinely scrolls the viewport; suppress scroll
+        // capture during the switch window so the imported transcript is not
+        // duplicated in the scrollback (2026-08-08).
+        terminalOutput.suppressScrollCaptureFor(REPLAY_SUPPRESSION_MS)
         // The session we are switching AWAY from: until a new chat's first
         // message, the server's "newest session" is still this one, and
         // neither the discovery loop nor the watcher may "correct" back to
@@ -2308,6 +2312,9 @@ class MainActivity : Activity() {
         /** Placeholder title for freshly created conversations (until the
          *  server's first-message title is fetched). */
         const val NEW_CHAT_TITLE = "New chat"
+
+        /** Scroll capture suppression window after a switch (resume replay). */
+        private const val REPLAY_SUPPRESSION_MS = 10_000L
 
         /**
          * After a conversation switch the watcher suppresses rebinds for this

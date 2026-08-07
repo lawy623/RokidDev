@@ -71,9 +71,12 @@ class TerminalOutputProcessorTest {
         assertEquals(1, oldest.scrollOffsetRows)
         assertEquals(1, oldest.scrollbackRows)
         assertFalse(oldest.cursor.visible)
+        // Browsing shows ONLY the scrollback (the live screen is not
+        // appended — imported transcripts would duplicate the visible
+        // tail; 2026-08-08).
         assertEquals("1111", rowText(oldest, 0))
-        assertEquals("2222", rowText(oldest, 1))
-        assertEquals("3333", rowText(oldest, 2))
+        assertEquals("    ", rowText(oldest, 1))
+        assertEquals("    ", rowText(oldest, 2))
 
         val stillOldest = processor.scrollOlder(rows = 99)
         assertEquals(oldest.revision, stillOldest.revision)
@@ -96,8 +99,8 @@ class TerminalOutputProcessorTest {
         assertEquals(1, typedAtLiveBottom.scrollOffsetRows)
         assertTrue(typedAtLiveBottom.hasNewOutput)
         assertEquals("1111", rowText(typedAtLiveBottom, 0))
-        assertEquals("2222", rowText(typedAtLiveBottom, 1))
-        assertEquals("3333", rowText(typedAtLiveBottom, 2))
+        assertEquals("    ", rowText(typedAtLiveBottom, 1))
+        assertEquals("    ", rowText(typedAtLiveBottom, 2))
 
         val emptyChunk = processor.consume("")
         assertTrue(emptyChunk.hasNewOutput)
