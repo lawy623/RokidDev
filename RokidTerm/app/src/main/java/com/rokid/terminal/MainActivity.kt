@@ -1363,7 +1363,9 @@ class MainActivity : Activity() {
      * returns. Cached per connection; failures keep the local list.
      */
     private fun ensurePaletteCommands() {
-        if (palette.items.isEmpty()) palette.setItems(COMMAND_PALETTE_DEFAULTS)
+        if (palette.items.isEmpty()) {
+            palette.setItems(CommandPaletteState.displayList(COMMAND_PALETTE_DEFAULTS, null))
+        }
         if (paletteFetchDone || paletteFetchInFlight) return
         val fetcher = commandFetcher ?: return
         paletteFetchInFlight = true
@@ -1373,7 +1375,7 @@ class MainActivity : Activity() {
                 paletteFetchInFlight = false
                 paletteFetchDone = true
                 if (remote != null && remote.isNotEmpty()) {
-                    palette.setItems((COMMAND_PALETTE_DEFAULTS + remote).distinct().sorted())
+                    palette.setItems(CommandPaletteState.displayList(COMMAND_PALETTE_DEFAULTS, remote))
                     if (palette.open) paletteSyncToView()
                 }
             }
@@ -1634,16 +1636,20 @@ class MainActivity : Activity() {
          */
         /**
          * Full known built-in command set (server `claude` list + commands
-         * verified in real use, 2026-08-06); the server helper adds custom
-         * commands/skills when reachable. The UI never claims completeness.
+         * verified in real use, 2026-08-06). The display list is built via
+         * CommandPaletteState.displayList (bare "/" and the session-picker
+         * action lead). `/resume` and `/continue` were removed 2026-08-08:
+         * the local conversation picker supersedes them. The server helper
+         * adds custom commands/skills when reachable; the UI never claims
+         * completeness.
          */
         val COMMAND_PALETTE_DEFAULTS = listOf(
-            "/", "/add-dir", "/agents", "/bug", "/clear", "/codex", "/compact",
+            "/add-dir", "/agents", "/bug", "/clear", "/codex", "/compact",
             "/config", "/copy", "/cost", "/doctor", "/effort", "/expose",
             "/export", "/fast", "/help", "/hooks", "/idle", "/init",
             "/install-github-app", "/keybindings", "/login", "/logout", "/mcp",
             "/memory", "/model", "/permissions", "/pr-comments",
-            "/release-notes", "/reset", "/resume", "/review", "/rewind",
+            "/release-notes", "/reset", "/review", "/rewind",
             "/shortcuts", "/skills", "/status", "/statusline",
             "/terminal-setup", "/todos", "/update", "/usage", "/vim",
             "/wall-clock",

@@ -44,4 +44,17 @@ class CommandPaletteState {
 
     /** The selected command (e.g. "/skills"), or null when closed or empty. */
     fun select(): String? = if (open && items.isNotEmpty()) items[selectedIndex] else null
+
+    companion object {
+        /** Local palette action that opens the conversation picker (design 2026-08-07). */
+        const val SESSION_PICKER_ITEM = "[切换对话]"
+
+        /**
+         * The displayed palette: the bare "/" (voice-continuation) and the
+         * session-picker action always lead, followed by the sorted unique
+         * defaults merged with any server-side custom commands.
+         */
+        fun displayList(defaults: List<String>, remote: List<String>?): List<String> =
+            listOf("/", SESSION_PICKER_ITEM) + (defaults + (remote ?: emptyList())).distinct().sorted()
+    }
 }

@@ -82,4 +82,25 @@ class CommandPaletteStateTest {
         palette.setItems(emptyList())
         assertNull(palette.select())
     }
+
+    @Test
+    fun displayListLeadsWithSlashAndSessionItemThenSortedUniqueCommands() {
+        val defaults = listOf("/model", "/usage", "/clear")
+        val remote = listOf("/usage", "/custom")
+
+        val list = CommandPaletteState.displayList(defaults, remote)
+
+        assertEquals("/", list[0])
+        assertEquals(CommandPaletteState.SESSION_PICKER_ITEM, list[1])
+        assertEquals(listOf("/clear", "/custom", "/model", "/usage"), list.drop(2))
+    }
+
+    @Test
+    fun displayListWithoutRemoteStillLeadsWithSpecialItems() {
+        val list = CommandPaletteState.displayList(listOf("/model"), null)
+
+        assertEquals("/", list[0])
+        assertEquals(CommandPaletteState.SESSION_PICKER_ITEM, list[1])
+        assertEquals(listOf("/model"), list.drop(2))
+    }
 }
