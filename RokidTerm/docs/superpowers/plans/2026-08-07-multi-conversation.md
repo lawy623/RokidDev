@@ -817,7 +817,7 @@ git commit -m "feat: per-conversation scrollback store with LRU prune"
 **Interfaces:**
 - Consumes: nothing new.
 - Produces:
-  - `CommandPaletteState.SESSION_PICKER_ITEM = "[切换对话]"` (companion const)
+  - `CommandPaletteState.SESSION_PICKER_ITEM = "[Switch Chat]"` (companion const)
   - `CommandPaletteState.displayList(defaults: List<String>, remote: List<String>?): List<String>` — returns `["/", SESSION_PICKER_ITEM] + (defaults + remote).distinct().sorted()`
 
 - [ ] **Step 1: Write the failing test (append to CommandPaletteStateTest.kt)**
@@ -857,7 +857,7 @@ Add to `CommandPaletteState.kt` (end of class):
 ```kotlin
     companion object {
         /** Local palette action that opens the conversation picker (design 2026-08-07). */
-        const val SESSION_PICKER_ITEM = "[切换对话]"
+        const val SESSION_PICKER_ITEM = "[Switch Chat]"
 
         /**
          * The displayed palette: the bare "/" (voice-continuation) and the
@@ -1756,7 +1756,7 @@ Add after `paletteMove` (line ~1191), before the Part 3 section:
     }
 ```
 
-- [ ] **Step 4: Palette entry for [切换对话]**
+- [ ] **Step 4: Palette entry for [Switch Chat]**
 
 In `confirmPaletteSelection` (line ~1163), insert the local-action branch before the insert path:
 
@@ -2828,11 +2828,11 @@ git commit -m "feat: conversation delete via armed selector"
 
 
 **Files:**
-- Modify: `RokidTerm/rules/composer.md` — palette contract: the `[切换对话]` local action item, `/resume`+`/continue` removal, and a pointer to the session-picker section.
+- Modify: `RokidTerm/rules/composer.md` — palette contract: the `[Switch Chat]` local action item, `/resume`+`/continue` removal, and a pointer to the session-picker section.
 ### Task 10: Docs sync
 
 **Files:**
-- Modify: `RokidTerm/rules/composer.md` — palette contract: the `[切换对话]` local action item, `/resume`+`/continue` removal, and a pointer to the session-picker section.
+- Modify: `RokidTerm/rules/composer.md` — palette contract: the `[Switch Chat]` local action item, `/resume`+`/continue` removal, and a pointer to the session-picker section.
 - Modify: `RokidTerm/rules/input.md` — conversation-picker key contract (Part 4 table: navigate/confirm/cancel per device, strict isolation, GO double cancel via arbitration).
 - Modify: `RokidTerm/rules/rendering.md` — scrollback persistence keyed per conversation; file layout; 30-file LRU; sync watcher.
 - Modify: `RokidTerm/CLAUDE.md` — Implemented section (2026-08-08), Open/pending: mark session-resume in progress with the design/plan links, and the per-conversation keying note; update the "keyed per endpoint today" sentence in the scrollback bullet.
@@ -2842,7 +2842,7 @@ git commit -m "feat: conversation delete via armed selector"
 In the "Implemented: local command palette (2026-08-06)" section, extend the list source + triggers with:
 
 ```markdown
-- A local action item `[切换对话]` sits directly after the bare `/`
+- A local action item `[Switch Chat]` sits directly after the bare `/`
   (selecting it opens the conversation picker instead of inserting text;
   contract in `input.md` Part 4). `/resume` and `/continue` were removed
   from the defaults 2026-08-08 — the local picker supersedes them; typed or
@@ -2860,7 +2860,7 @@ keys 2/5 only (4/6 reserved for the armed delete selector):
 ### Part 4: Conversation picker (2026-08-08)
 
 Local two-level picker (folders → conversations) opened at connect time or
-from the palette's `[切换对话]` action. Strict isolation: while open, only
+from the palette's `[Switch Chat]` action. Strict isolation: while open, only
 navigate/confirm/cancel act; everything else is consumed (incl. the
 long-press/Shutter broadcasts — Shutter is a no-op; the TP long-press
 broadcast arms the delete selector).
@@ -2926,7 +2926,7 @@ Run `./dev.sh build && ./dev.sh run`, then:
 1. **Deploy helper first**: scp `server/rokid-sessions`, chmod, `claude --version` on the server.
 2. **Connect flow**: endpoint click → picker appears with `/srv` (+ its subfolders) → confirm (level 1, `＋ 新对话`) → terminal starts in the workspace with a fresh session; a second connect shows the new session in the list with its first message as the title.
 3. **Resume**: pick a past conversation → the conversation replays; the `▶` marker moves; local history import is browsable (TP swipes).
-4. **In-session switch**: composer → palette → `[切换对话]` → folder/session → confirm → "已切换会话" toast; the pane redraws; history gestures browse the new conversation.
+4. **In-session switch**: composer → palette → `[Switch Chat]` → folder/session → confirm → "已切换会话" toast; the pane redraws; history gestures browse the new conversation.
 5. **Cancel paths**: Back at level 1 → up; Back at level 0 (connect-time) → endpoint list; Ring GO double → cancel; right knob → cancel; TP single confirms; Ring touchpad single confirms; COIDEA keys 2/5/4/6 navigate.
 6. **Scrollback files**: `adb shell run-as com.rokid.terminal ls files/` shows per-conversation files; old `scrollback_<endpoint>.txt` migrated on first bind.
 7. **Manual /resume convergence**: type `/resume` via the palette passthrough (or speech), pick a session in Claude's native picker, wait ≤30 s → toast "已切换会话" and local files re-keyed.
@@ -2937,7 +2937,7 @@ Run `./dev.sh build && ./dev.sh run`, then:
 ## Self-review notes (2026-08-08)
 
 - Spec §3.1 protocol matches Tasks 2+5 verb-for-verb (`list <base>`/`status <session>`/`switch <session> <base> <dir> <resume:id|new:uuid>`, `F`/`S`/`pid`/`ok`/`error` lines).
-- Spec §3.2 entry points: connect picker (Task 9 connectSelected), palette `[切换对话]` (Task 8 Step 4), folder level from the filesystem (Task 5 `list_base`), `baseDir` = `workspace` (Global Constraints).
+- Spec §3.2 entry points: connect picker (Task 9 connectSelected), palette `[Switch Chat]` (Task 8 Step 4), folder level from the filesystem (Task 5 `list_base`), `baseDir` = `workspace` (Global Constraints).
 - Spec §3.2 scrollback re-keying + bounds + LRU (Task 3), binding + legacy migration (Task 9 Step 4), `--session-id` for new sessions (Task 5 launch_args; Task 9 uuid generation).
 - Spec §3.3 sync guarantee: pinned launch (Task 5), post-switch verification inside `switch` (Task 5), 30 s watcher (Task 9 Step 5).
 - Spec §4 security: fixed binary + whitelisted args (Tasks 5/6), path-under-base + charset validation (Task 5), no message bodies (Task 5), no titles/session ids in logcat (Task 10 + checklist item 10).

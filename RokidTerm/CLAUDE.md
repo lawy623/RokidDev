@@ -197,7 +197,7 @@ Verified on the current glasses and Tencent Cloud server:
 ### Implemented 2026-08-08
 
 - Conversation picker at connect time and in-session via the palette's
-  `[切换对话]` action (two-level: folders → conversations; contract in
+  `[Switch Chat]` action (two-level: folders → conversations; contract in
   `rules/input.md` Part 4).
 - Server `rokid-sessions` helper (`list`/`status`/`switch` verbs) for
   session discovery and switching.

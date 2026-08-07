@@ -46,8 +46,9 @@ class CommandPaletteState {
     fun select(): String? = if (open && items.isNotEmpty()) items[selectedIndex] else null
 
     companion object {
-        /** Local palette action that opens the conversation picker (design 2026-08-07). */
-        const val SESSION_PICKER_ITEM = "[切换对话]"
+        /** Local palette action that opens the conversation picker (design 2026-08-07).
+         *  English: all UI hints/labels are English (user rule 2026-08-08). */
+        const val SESSION_PICKER_ITEM = "[Switch Chat]"
 
         /**
          * The displayed palette: the bare "/" (voice-continuation) and the

@@ -372,7 +372,7 @@ keycodes were wrong (verified 2026-08-06).
 ### Part 4: Conversation picker (2026-08-08)
 
 Local two-level picker (folders → conversations) opened at connect time or
-from the palette's `[切换对话]` action. Strict isolation: while open, only
+from the palette's `[Switch Chat]` action. Strict isolation: while open, only
 navigate/confirm/cancel act; everything else is consumed (incl. the
 long-press/Shutter broadcasts — Shutter is a no-op; the TP long-press
 broadcast arms the delete selector).

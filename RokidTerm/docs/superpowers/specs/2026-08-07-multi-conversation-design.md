@@ -115,7 +115,7 @@ conversation is preserved; only the running tool call is lost).
     (dir + resume-id or app-generated session-id), replacing the fixed
     launcher invocation. The fixed binary `/home/rokid/bin/rokid-claude`
     remains; args are whitelisted only.
-  - **In-session**: command palette gains a local action item `[切换对话]`
+  - **In-session**: command palette gains a local action item `[Switch Chat]`
     right after the bare `/` (local action — selecting it closes the
     palette/composer and opens the session picker; nothing is sent to the
     PTY until the final switch executes).

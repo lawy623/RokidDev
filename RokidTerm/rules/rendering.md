@@ -97,3 +97,13 @@ SSH PTY bytes
   1000 rows/file and 30 files per endpoint (LRU by mtime). Binding follows
   the conversation picker's choice; a 30 s sync watcher re-binds when the
   server's active session changes out-of-band (manual `/resume`, `/cd`).
+
+## UI language rule (user 2026-08-08)
+
+All app-drawn UI chrome is ENGLISH: panel headers, list items, hints,
+status lines, toasts, the palette's special items (`/`, `[Switch Chat]`),
+the delete selector (`Cancel | Delete`), `+ New Chat`, and the
+`DELETING…`/`PLEASE WAIT` states. Conversation CONTENT (the remote
+terminal text rendered from the PTY, including Claude's messages) is
+rendered verbatim in whatever language the conversation uses — the rule
+covers only the app's own hints/guidance, never the dialogue.
