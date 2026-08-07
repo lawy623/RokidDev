@@ -127,6 +127,10 @@ The phone-side app handles: device binding (QR code-based WiFi provisioning), re
 
 ## Practical Development Lessons (from Flappy Bird project)
 
+> 输入/按键/触摸板真机经验汇总：`.docs/ROKID_INPUT_INTERACTIONS.md`
+> （共享参考，含 2026-08-08 快滑配对实测）；RokidTerm 项目级交互合同在
+> `RokidTerm/rules/input.md`（Part 1-4，含对话选择器键位）。
+
 ### Build & Deploy Pipeline (macOS)
 
 Rokid Glass apps are standard Android APKs. The pipeline:

@@ -972,7 +972,18 @@ class TerminalView(context: Context) : View(context) {
             canvas.drawRect(right - 13f, thumbTop, right - 9f, thumbTop + thumbHeight, paint)
         }
 
-        if (sessionPickerUi.deleteArmed && sessionPickerUi.level == 1) {
+        if (sessionPickerUi.level == 1 && sessionPickerUi.deleteInFlight) {
+            // Server-side delete round trip in flight: show DELETING… and
+            // lock input (user 2026-08-08).
+            paint.alpha = 255
+            paint.textSize = 16f
+            val msg = "DELETING…"
+            val msgW = paint.measureText(msg)
+            canvas.drawText(msg, (left + right) / 2f - msgW / 2f, bottom - 68f, paint)
+            paint.alpha = 175
+            paint.textSize = 11f
+            canvas.drawText("PLEASE WAIT", left + 12f, bottom - 36f, paint)
+        } else if (sessionPickerUi.deleteArmed && sessionPickerUi.level == 1) {
             paint.alpha = 255
             paint.textSize = 16f
             val cancelText = "Cancel"
@@ -1129,4 +1140,5 @@ data class SessionPickerUi(
     val currentSessionId: String? = null,
     val deleteArmed: Boolean = false,
     val deleteOption: Int = 0,
+    val deleteInFlight: Boolean = false,
 )

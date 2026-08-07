@@ -1281,7 +1281,11 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun handleSessionPickerKey(keyCode: Int, event: KeyEvent): Boolean = when (keyCode) {
+    private fun handleSessionPickerKey(keyCode: Int, event: KeyEvent): Boolean {
+        // Delete round trip in flight: everything is consumed (strict
+        // isolation until the result lands, 2026-08-08).
+        if (sessionPicker.deleteInFlight) return true
+        return when (keyCode) {
         KeyEvent.KEYCODE_HOME, KeyEvent.KEYCODE_MOVE_HOME -> {
             // Ring touchpad long press: arm the delete selector.
             if (event.repeatCount == 0) sessionPickerArmDelete()
@@ -1354,6 +1358,7 @@ class MainActivity : Activity() {
             true
         }
         else -> true
+        }
     }
 
     private fun sessionPickerSyncToView() {
@@ -1370,12 +1375,13 @@ class MainActivity : Activity() {
                 currentSessionId = sessionPicker.currentSessionId,
                 deleteArmed = sessionPicker.deleteArmed,
                 deleteOption = sessionPicker.deleteOption,
+                deleteInFlight = sessionPicker.deleteInFlight,
             ),
         )
     }
 
     private fun sessionPickerMove(delta: Int) {
-        if (!sessionPicker.open) return
+        if (!sessionPicker.open || sessionPicker.deleteInFlight) return
         folderSelectionMoved = true
         sessionPicker.move(delta)
         sessionPickerSyncToView()
@@ -1393,13 +1399,12 @@ class MainActivity : Activity() {
     private fun sessionPickerConfirm() {
         pickerPrimaryPending?.let(mainHandler::removeCallbacks)
         pickerPrimaryPending = null
-        if (!sessionPicker.open) return
+        if (!sessionPicker.open || sessionPicker.deleteInFlight) return
         if (sessionPicker.deleteArmed) {
             if (sessionPicker.confirmDeleteOption()) {
                 val folder = sessionPicker.selectedFolder() ?: return
                 val session = folder.sessions.getOrNull(sessionPicker.sessionIndex - 1) ?: return
                 sessionPicker.disarmDelete()
-                sessionPickerSyncToView()
                 runDeleteConversation(folder.path, session.id)
             } else {
                 sessionPicker.disarmDelete()
@@ -1420,7 +1425,7 @@ class MainActivity : Activity() {
     private fun sessionPickerCancel() {
         pickerPrimaryPending?.let(mainHandler::removeCallbacks)
         pickerPrimaryPending = null
-        if (!sessionPicker.open) return
+        if (!sessionPicker.open || sessionPicker.deleteInFlight) return
         if (sessionPicker.deleteArmed) {
             sessionPicker.disarmDelete()
             sessionPickerSyncToView()
@@ -1861,10 +1866,13 @@ class MainActivity : Activity() {
     private fun runDeleteConversation(folderPath: String, sessionId: String) {
         val endpoint = activeEndpoint ?: return
         val fetcher = sessionFetcher ?: return
+        sessionPicker.setDeleteInFlight(true)
+        sessionPickerSyncToView()
         Thread {
             val raw = fetcher.deleteConversation(endpoint.sessionName, endpoint.workspace, folderPath, sessionId)
             val ok = raw != null && ServerSessionFetcher.parseSwitchResult(raw) != null
             runOnUiThread {
+                sessionPicker.setDeleteInFlight(false)
                 if (ok) {
                     sessionPicker.removeSession(folderPath, sessionId)
                     val store = scrollbackStore
@@ -1876,6 +1884,7 @@ class MainActivity : Activity() {
                     sessionPickerSyncToView()
                     android.widget.Toast.makeText(this, "Session deleted", android.widget.Toast.LENGTH_SHORT).show()
                 } else {
+                    sessionPickerSyncToView()
                     android.widget.Toast.makeText(this, "Delete failed", android.widget.Toast.LENGTH_SHORT).show()
                 }
             }

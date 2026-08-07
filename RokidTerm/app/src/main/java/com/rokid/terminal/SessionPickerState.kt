@@ -167,6 +167,14 @@ class SessionPickerState {
         disarmDelete()
     }
 
+    /** True while the server-side delete round trip is in flight (input locked). */
+    var deleteInFlight: Boolean = false
+        private set
+
+    fun setDeleteInFlight(value: Boolean) {
+        deleteInFlight = value
+    }
+
     /** Updates the ▶ markers after a successful switch. */
     fun markCurrent(folderPath: String?, sessionId: String?) {
         currentFolderPath = folderPath
