@@ -179,3 +179,20 @@ class TerminalOutputProcessorTest {
     private fun rowText(frame: TerminalFrame, row: Int): String = frame.cells[row]
         .joinToString("") { if (it.continuation) "·" else it.text }
 }
+
+    @Test
+    fun clearScrollbackEmptiesHistoryAndReturnsToLive() {
+        // Conversation switches must not leak the previous conversation's
+        // rows: clearScrollback empties the in-memory history unconditionally
+        // (importScrollbackText alone is a no-op for empty rows or while the
+        // alternate screen is active — regression 2026-08-08).
+        val processor = TerminalOutputProcessor(columns = 4, rows = 3)
+        processor.importScrollbackText(listOf("1111", "2222", "3333"))
+        processor.scrollOlder(rows = 99)
+        assertEquals(3, processor.scrollbackRows)
+
+        processor.clearScrollback()
+
+        assertEquals(0, processor.scrollbackRows)
+        assertEquals(0, processor.scrollOffset)
+    }

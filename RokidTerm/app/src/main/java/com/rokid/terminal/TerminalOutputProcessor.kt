@@ -52,6 +52,21 @@ class TerminalOutputProcessor(
         revision++
     }
 
+    /**
+     * Unconditionally empties the in-memory scrollback (conversation
+     * switches must not leak the previous conversation's rows; the import
+     * alone is a no-op while the alternate screen is active or for empty
+     * files — fixed 2026-08-08).
+     */
+    @Synchronized
+    fun clearScrollback() {
+        screen.clearScrollback()
+        scrollBaseline = emptyList()
+        scrollOffsetRows = 0
+        hasNewOutput = false
+        revision++
+    }
+
     @Synchronized
     fun consume(raw: String): TerminalFrame {
         val appendedBefore = screen.scrollbackRowsAppended()

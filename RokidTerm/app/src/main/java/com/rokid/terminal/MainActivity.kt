@@ -1932,6 +1932,12 @@ class MainActivity : Activity() {
                 runCatching { legacy.delete() }
             }
         }
+        // Clear FIRST: importScrollbackText is a no-op for empty rows or
+        // while the alternate screen is active, so without an explicit clear
+        // the previous conversation's captured rows stayed in memory and
+        // browsing a new conversation showed the old one's history
+        // (user report 2026-08-08).
+        terminalOutput.clearScrollback()
         terminalOutput.importScrollbackText(rows)
     }
 

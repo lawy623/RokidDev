@@ -188,6 +188,18 @@ class TerminalScreen(
         rows.forEach { appendScrollbackRow(textRow(it)) }
     }
 
+    /**
+     * Unconditionally empties the scrollback — unlike [importScrollbackText]
+     * it is NOT a no-op for empty rows or while the alternate screen is
+     * active. Conversation switching must clear the previous conversation's
+     * rows even when the import cannot apply (fixed 2026-08-08: browsing a
+     * new conversation showed the previous one's history).
+     */
+    fun clearScrollback() {
+        scrollback.clear()
+        totalScrollbackRowsAppended = 0L
+    }
+
     private fun textRow(text: String): Array<TerminalCell> {
         val row = Array(columns) { TerminalCell() }
         var column = 0
