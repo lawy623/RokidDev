@@ -156,8 +156,7 @@ Verified on the current glasses and Tencent Cloud server:
   exchanges, ~55 KB/endpoint) and is overwritten each session — it never
   accumulates. In-memory browsing keeps the full 5000-row cap. Live
   screen content still comes from the tmux attach redraw — only the
-  scrollback is persisted. Files are keyed per endpoint today; when
-  session-resume lands, key them per Claude session/conversation instead.
+  scrollback is persisted. Files are now keyed per conversation (2026-08-08); see Open/pending.
 - SGR background colors parsed and rendered as light fills (Claude Code
   user-message blocks separated from output).
 - Terminal-mode Shutter swapped (2026-08-06): single = return to bottom
@@ -195,14 +194,34 @@ Verified on the current glasses and Tencent Cloud server:
   fetched once per connection from the server helper (file enumeration of
   Claude command/skill dirs), local built-in defaults as fallback.
 
+### Implemented 2026-08-08
+
+- Conversation picker at connect time and in-session via the palette's
+  `[切换对话]` action (two-level: folders → conversations; contract in
+  `rules/input.md` Part 4).
+- Server `rokid-sessions` helper (`list`/`status`/`switch` verbs) for
+  session discovery and switching.
+- Scrollback persistence keyed per conversation
+  (`scrollback_<endpointId>_<folderKey>_<sessionId>.txt`; 1000 rows/file,
+  30 files/endpoint LRU).
+- Sync watcher (30 s poll via `rokid-sessions status`) re-binds local
+  history on out-of-band session changes (manual `/resume`, `/cd`).
+- Conversation deletion via the armed selector (long-press arm, two-option
+  `取消 | 删除` bar, confirm-on-delete removes server transcript + local
+  scrollback file).
+- TP double-tap cancel in the conversation picker (not Back).
+
 ### Open / pending
 
-- **Session resume support** — pick and resume a previous Claude Code
-  conversation (server-side `claude --resume` session list, browsable and
-  selectable from the glasses; user request 2026-08-06). When this lands,
-  scrollback persistence must be keyed per conversation/session, not per
-  endpoint (user requirement 2026-08-06: different conversations get
-  different history files).
+- **Session resume support** — implemented 2026-08-08 (conversation picker,
+  `rokid-sessions` helper, per-conversation scrollback keying, sync
+  watcher); design doc: `.superpowers/sdd/2026-08-07-multi-conversation/`,
+  plan docs in the same directory.
+- **Claude interactive panels with input fields** — panels that combine a
+  list with a text input (e.g. the option panels Claude Code shows for
+  choosing an implementation approach) are NOT yet handled; not observed in
+  real use as of 2026-08-07. Design the interaction (list nav + input
+  focus) only after a real case is captured.
 - ~~Local terminal history too short / not persistent~~ — **fixed
   2026-08-06**: root cause was the shared-array bug above; baseline-based
   detection deployed and hardware-verified (single-session history grows

@@ -90,3 +90,10 @@ SSH PTY bytes
   Reset, resize, and CSI `3J` clear history; the baseline is cleared
   alongside.
 - Historical frames hide the cursor. New output must not snap a historical viewport live; preserve the viewed position as full-screen rows arrive, including across bounded-history eviction. Returning to live clears the `NEW OUTPUT` indicator.
+- Scrollback persistence is keyed per CONVERSATION (2026-08-08): files are
+  `scrollback_<endpointId>_<folderKey>_<sessionId>.txt` (folderKey = the
+  server's encoded project dir; sessionId = the Claude session uuid — the
+  app supplies it for new conversations via `--session-id`). Bounded at
+  1000 rows/file and 30 files per endpoint (LRU by mtime). Binding follows
+  the conversation picker's choice; a 30 s sync watcher re-binds when the
+  server's active session changes out-of-band (manual `/resume`, `/cd`).

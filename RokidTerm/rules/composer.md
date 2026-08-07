@@ -163,6 +163,13 @@ file enumeration of the Claude command/skill directories (structured data,
 never scraped pixels). Fetched once per connection with the local list as
 fallback; the UI never claims completeness.
 
+- A local action item `[切换对话]` sits directly after the bare `/`
+  (selecting it opens the conversation picker instead of inserting text;
+  contract in `input.md` Part 4). `/resume` and `/continue` were removed
+  from the defaults 2026-08-08 — the local picker supersedes them; typed or
+  speech `/resume` still passes through, and the sync watcher re-binds local
+  history when the session changes.
+
 The `OpenCommandPalette` entry rule from 2026-08-05 is confirmed; the
 server-assisted list source is now implemented. The optional live remote
 slash mode below remains future work.

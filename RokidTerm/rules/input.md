@@ -369,6 +369,32 @@ double; else single). Ring swipe directions ARE corrected in the mapper
 (left gesture → older/left semantics) — real use showed the raw inverted
 keycodes were wrong (verified 2026-08-06).
 
+### Part 4: Conversation picker (2026-08-08)
+
+Local two-level picker (folders → conversations) opened at connect time or
+from the palette's `[切换对话]` action. Strict isolation: while open, only
+navigate/confirm/cancel act; everything else is consumed (incl. the
+long-press/Shutter broadcasts — Shutter is a no-op; the TP long-press
+broadcast arms the delete selector).
+
+| Device | Navigate | Confirm | Cancel |
+|---|---|---|---|
+| Rokid TP | swipe up/down (left/right = up/down) | single click (after the double-tap window) | double click |
+| COIDEA KM | keys 2/5 | left knob (8) | right knob (D) |
+| INMO Ring4 | swipe (right-swipe arrival = next) | touchpad single | GO double |
+
+Back remains a secondary cancel fallback on the glasses. GO double cancels
+via the same F8 arbitration as Part 3; GO long and single are blocked. Back
+at level 1 steps up to folders; Back at level 0 closes the picker
+(connect-time: returns to the endpoint list).
+
+Delete selector (armed by long-press on a session row — TP long-press
+broadcast / Ring touchpad long / COIDEA key 3): a two-option bar
+`取消 | 删除` appears with 取消 selected by default; swipes (or COIDEA
+4/6) move between the options; confirm on 删除 deletes the transcript on
+the server + the local scrollback file (irrecoverable); confirm on 取消 or
+any cancel key disarms. The current conversation (▶) can never be armed.
+
 Mode-dependent reuse (same control, different meaning by mode): Shutter =
 interrupt single / return-to-live double (terminal, 500 ms arbitration) /
 delete single (composer, immediate — delete does NOT share an arbitration
