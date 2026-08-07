@@ -2666,7 +2666,12 @@ broadcast arms the delete selector:
 - [ ] **Step 2: Armed-state key routing**
 
 In `handleSessionPickerKey`, when the picker is armed the navigation and
-confirm/cancel keys route to the delete selector instead of the list:
+confirm/cancel keys route to the delete selector instead of the list.
+NOTE (fix round 2026-08-08): the DPAD branch must keep the ring inversion
+EXACTLY as in Task 11 — the first draft of this step dropped it and
+reversed every ring horizontal swipe in the unarmed picker; and the armed
+`when` must check `ring` BEFORE the plain RIGHT clause or the ring can
+never reach 取消:
 
 ```kotlin
         KeyEvent.KEYCODE_2, KeyEvent.KEYCODE_5,
@@ -2684,17 +2689,20 @@ confirm/cancel keys route to the delete selector instead of the list:
         KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN,
         KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> {
             if (event.repeatCount == 0) {
+                // Ring arrivals are inverted: physical right-swipe arrives
+                // as DPAD_LEFT = next (+1); physical left-swipe arrives as
+                // DPAD_RIGHT = previous (-1).
+                val ring = isRingEvent(event)
+                val next = when {
+                    keyCode == KeyEvent.KEYCODE_DPAD_UP -> false
+                    keyCode == KeyEvent.KEYCODE_DPAD_DOWN -> true
+                    ring -> keyCode == KeyEvent.KEYCODE_DPAD_LEFT
+                    else -> keyCode == KeyEvent.KEYCODE_DPAD_RIGHT
+                }
                 if (sessionPicker.deleteArmed) {
-                    // Armed: any swipe moves the selector (right/down = 删除).
-                    val ring = isRingEvent(event)
-                    val next = when {
-                        keyCode == KeyEvent.KEYCODE_DPAD_DOWN || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT -> true
-                        ring -> keyCode == KeyEvent.KEYCODE_DPAD_LEFT // ring right-swipe arrival
-                        else -> false
-                    }
                     sessionPickerMoveDeleteOption(if (next) 1 else -1)
                 } else {
-                    sessionPickerMove(if (keyCode == KeyEvent.KEYCODE_DPAD_UP || keyCode == KeyEvent.KEYCODE_DPAD_LEFT) -1 else 1)
+                    sessionPickerMove(if (next) 1 else -1)
                 }
             }
             true
@@ -2744,6 +2752,12 @@ its second press cancels, which disarms):
 
 - [ ] **Step 3: runDeleteConversation + local file cleanup**
 
+NOTE (fix round 2026-08-08): the ok-branch must remove by the CONFIRMED
+identity (`removeSession(folderPath, sessionId)`), NOT the live cursor —
+the first draft removed by cursor and could delete the wrong row if the
+user navigated during the ≤15 s round trip. `removeSession` lives on
+SessionPickerState (Task 14's `removeCurrentSession` stays, still tested).
+
 ```kotlin
     private fun sessionPickerArmDelete() {
         if (sessionPicker.armDelete()) sessionPickerSyncToView()
@@ -2763,7 +2777,7 @@ its second press cancels, which disarms):
             val ok = raw != null && ServerSessionFetcher.parseSwitchResult(raw) != null
             runOnUiThread {
                 if (ok) {
-                    sessionPicker.removeCurrentSession()
+                    sessionPicker.removeSession(folderPath, sessionId)
                     val store = scrollbackStore
                     if (store != null) {
                         runCatching {
