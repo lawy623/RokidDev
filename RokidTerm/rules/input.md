@@ -388,12 +388,19 @@ via the same F8 arbitration as Part 3; GO long and single are blocked. Back
 at level 1 steps up to folders; Back at level 0 closes the picker
 (connect-time: returns to the endpoint list).
 
+**Swipe pair dedup (2026-08-08):** the TP fast swipe emits DPAD PAIRS
+(LEFT+UP / RIGHT+DOWN) within a few ms. The picker dedups the same
+direction within 120 ms (same rule as panel mode) — without it one swipe
+moved two list items. Slow swipes (continuous single events) still move
+one item per swipe. Ring swipes are single events and are unaffected.
+
 Delete selector (armed by long-press on a session row — TP long-press
 broadcast / Ring touchpad long / COIDEA key 3): a two-option bar
-`取消 | 删除` appears with 取消 selected by default; swipes (or COIDEA
-4/6) move between the options; confirm on 删除 deletes the transcript on
-the server + the local scrollback file (irrecoverable); confirm on 取消 or
-any cancel key disarms. The current conversation (▶) can never be armed.
+`Cancel | Delete` appears with Cancel selected by default (English labels
+per user 2026-08-08, centered, no arrows); swipes (or COIDEA 4/6) move
+between the options; confirm on Delete deletes the transcript on the server
++ the local scrollback file (irrecoverable); confirm on Cancel or any
+cancel key disarms. The current conversation (▶) can never be armed.
 
 Mode-dependent reuse (same control, different meaning by mode): Shutter =
 interrupt single / return-to-live double (terminal, 500 ms arbitration) /

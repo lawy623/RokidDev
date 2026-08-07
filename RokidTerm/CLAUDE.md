@@ -207,9 +207,39 @@ Verified on the current glasses and Tencent Cloud server:
 - Sync watcher (30 s poll via `rokid-sessions status`) re-binds local
   history on out-of-band session changes (manual `/resume`, `/cd`).
 - Conversation deletion via the armed selector (long-press arm, two-option
-  `取消 | 删除` bar, confirm-on-delete removes server transcript + local
+  `Cancel | Delete` bar, confirm-on-delete removes server transcript + local
   scrollback file).
 - TP double-tap cancel in the conversation picker (not Back).
+- Folder-list cache-first with background refresh (per app run; a fresh SSH
+  fetch takes seconds on this network — the picker shows the last fetched
+  list instantly; stale folders are safe because the server `switch` verb
+  re-validates the target dir).
+- Picker fast-swipe pair dedup: the TP fast swipe emits DPAD PAIRS
+  (LEFT+UP / RIGHT+DOWN) within a few ms; the picker dedups the same
+  direction within 120 ms (same rule as panel mode), otherwise one swipe
+  moves two list items (user report 2026-08-08).
+- Picker overlay is full-bleed OPAQUE below the top info bar. Hardware
+  lesson: `drawRingIcon`/`drawKeyboardIcon` leave `paint.style = STROKE`,
+  so a later fill rect drawn without an explicit `Paint.Style.FILL` renders
+  as a hollow outline — the "transparent picker" bug (2026-08-08).
+
+### Hardware-verified 2026-08-08 (real server + glasses)
+
+- The JSch exec channel on this firmware does NOT deliver EOF: the remote
+  command exits 0 and its output arrives via `available()`/`read()`, but
+  EOF never comes within the timeout. Reads must return on a quiet period
+  (~750 ms), never wait for EOF or discard on timeout (the latter silently
+  dropped every helper response).
+- `java.io.ByteArrayOutputStream.toString(Charset)` is missing on this
+  firmware (API 33+) and throws `NoSuchMethodError` — an `Error`, NOT an
+  `Exception`, so `catch (Exception)` does not catch it and the fetch
+  thread crashes. Use `bytes.toString("UTF-8")` (ServerCommandFetcher had
+  the same latent issue).
+- The server helper command must NOT embed `|| true` before appended
+  arguments: `$HELPER list ...` with `HELPER="... || true"` swallows the
+  verb (shell runs the helper with no args and `true` wins) — every verb
+  invocation failed silently and the picker only ever showed the /srv
+  fallback.
 
 ### Open / pending
 
