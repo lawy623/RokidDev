@@ -427,7 +427,7 @@ class ServerSessionFetcherParseTest {
             SessionStatus("123", "/srv", "id-9"),
             ServerSessionFetcher.parseStatus("pid\t123\t/srv\tid-9"),
         )
-        assertNull(ServerSessionFetcher.parseStatus("pid\t123\t/srv\t-").sessionId)
+        assertNull(ServerSessionFetcher.parseStatus("pid\t123\t/srv\t-")?.sessionId)
         assertNull(ServerSessionFetcher.parseStatus("none"))
         assertNull(ServerSessionFetcher.parseStatus(""))
     }
