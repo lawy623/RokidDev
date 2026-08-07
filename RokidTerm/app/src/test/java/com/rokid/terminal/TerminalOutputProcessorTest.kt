@@ -178,7 +178,6 @@ class TerminalOutputProcessorTest {
 
     private fun rowText(frame: TerminalFrame, row: Int): String = frame.cells[row]
         .joinToString("") { if (it.continuation) "·" else it.text }
-}
 
     @Test
     fun clearScrollbackEmptiesHistoryAndReturnsToLive() {
@@ -196,3 +195,4 @@ class TerminalOutputProcessorTest {
         assertEquals(0, processor.scrollbackRows)
         assertEquals(0, processor.scrollOffset)
     }
+}
