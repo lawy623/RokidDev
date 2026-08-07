@@ -71,6 +71,10 @@ class MainActivity : Activity() {
     /** True once the user moved the folder selection (live refresh skips). */
     private var folderSelectionMoved = false
 
+    /** Swipe pair-dedup for the picker (fast swipes emit DPAD pairs). */
+    private var lastPickerSwipe: String? = null
+    private var lastPickerSwipeTime = 0L
+
     private var lastScrollbackCount = -1
     private var scrollbackStore: ScrollbackStore? = null
     private var scrollbackFolderKey: String? = null
@@ -1313,10 +1317,21 @@ class MainActivity : Activity() {
                     ring -> keyCode == KeyEvent.KEYCODE_DPAD_LEFT
                     else -> keyCode == KeyEvent.KEYCODE_DPAD_RIGHT
                 }
-                if (sessionPicker.deleteArmed) {
-                    sessionPickerMoveDeleteOption(if (next) 1 else -1)
+                // Fast swipes emit DPAD PAIRS (LEFT+UP / RIGHT+DOWN) within a
+                // few ms — dedup the same direction like panel mode, or one
+                // swipe moves two items (2026-08-08).
+                val arrow = if (next) ARROW_DOWN else ARROW_UP
+                val now = android.os.SystemClock.uptimeMillis()
+                if (arrow == lastPickerSwipe && now - lastPickerSwipeTime < SWIPE_PAIR_DEDUP_MS) {
+                    // second half of the pair — skip
                 } else {
-                    sessionPickerMove(if (next) 1 else -1)
+                    lastPickerSwipe = arrow
+                    lastPickerSwipeTime = now
+                    if (sessionPicker.deleteArmed) {
+                        sessionPickerMoveDeleteOption(if (next) 1 else -1)
+                    } else {
+                        sessionPickerMove(if (next) 1 else -1)
+                    }
                 }
             }
             true

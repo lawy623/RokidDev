@@ -933,7 +933,7 @@ class TerminalView(context: Context) : View(context) {
             val rowTop = listTop + i * rowHeight
             var text = items[itemIndex]
             if (sessionPickerUi.deleteArmed && sessionPickerUi.level == 1 && itemIndex == selected) {
-                text = "$text 删除?"
+                text = "$text Delete?"
             }
             if (itemIndex == selected) {
                 paint.style = Paint.Style.FILL
@@ -975,8 +975,8 @@ class TerminalView(context: Context) : View(context) {
         if (sessionPickerUi.deleteArmed && sessionPickerUi.level == 1) {
             paint.alpha = 255
             paint.textSize = 16f
-            val cancelText = if (sessionPickerUi.deleteOption == 0) "◀ 取消" else "取消"
-            val deleteText = if (sessionPickerUi.deleteOption == 1) "删除 ▶" else "删除"
+            val cancelText = "Cancel"
+            val deleteText = "Delete"
             val midX = (left + right) / 2f
             paint.style = Paint.Style.FILL
             paint.color = Color.GREEN
@@ -986,10 +986,14 @@ class TerminalView(context: Context) : View(context) {
             } else {
                 canvas.drawRect(midX, bottom - 92f, right - 4f, bottom - 62f, paint)
             }
+            // English labels (user 2026-08-08), no arrows, centered in each
+            // half of the option bar.
             paint.style = Paint.Style.FILL
             paint.alpha = 255
-            canvas.drawText(cancelText, left + 12f, bottom - 68f, paint)
-            canvas.drawText(deleteText, right - 12f - paint.measureText("删除"), bottom - 68f, paint)
+            val cancelW = paint.measureText(cancelText)
+            val deleteW = paint.measureText(deleteText)
+            canvas.drawText(cancelText, midX / 2f - cancelW / 2f, bottom - 68f, paint)
+            canvas.drawText(deleteText, midX + (right - midX) / 2f - deleteW / 2f, bottom - 68f, paint)
             paint.alpha = 175
             paint.textSize = 11f
             canvas.drawText("SWIPE SELECT   CONFIRM DELETE   CANCEL UNMARK", left + 12f, bottom - 36f, paint)
