@@ -68,8 +68,6 @@ class MainActivity : Activity() {
 
     /** Last fetched folder list; shown instantly on the next picker open. */
     private var cachedFolders: List<RemoteFolder>? = null
-    /** True once the user moved the folder selection (live refresh skips). */
-    private var folderSelectionMoved = false
 
     /** Swipe pair-dedup for the picker (fast swipes emit DPAD pairs). */
     private var lastPickerSwipe: String? = null
@@ -1384,7 +1382,6 @@ class MainActivity : Activity() {
 
     private fun sessionPickerMove(delta: Int) {
         if (!sessionPicker.open || sessionPicker.deleteInFlight) return
-        folderSelectionMoved = true
         sessionPicker.move(delta)
         sessionPickerSyncToView()
     }
@@ -1789,7 +1786,6 @@ class MainActivity : Activity() {
         val endpoint = activeEndpoint ?: return
         sessionPickerConnectMode = connectMode
         clearPrimaryGesture()
-        folderSelectionMoved = false
         sessionPicker.open(rememberedFolder(endpoint.id), rememberedSession(endpoint.id))
         // Cache-first (user request 2026-08-08): the last fetched folder
         // list shows instantly (a fresh SSH fetch takes seconds on this
@@ -1833,9 +1829,16 @@ class MainActivity : Activity() {
                 if (folders != null && folders.isNotEmpty()) {
                     cachedFolders = folders
                 }
-                if (sessionPicker.open && sessionPicker.level == 0 && !folderSelectionMoved) {
+                if (sessionPicker.open && sessionPicker.level == 0) {
+                    // Apply live ALWAYS at the folder level (a new folder
+                    // must appear even if the user navigated — user report
+                    // 2026-08-08), restoring the user's current position by
+                    // path instead of yanking them to the top/remembered.
+                    val selectedPath = sessionPicker.selectedFolder()?.path
                     sessionPicker.setFolders(fresh, failed = folders == null)
-                    sessionPicker.selectFolder(sessionPicker.currentFolderPath)
+                    if (selectedPath == null || !sessionPicker.selectFolder(selectedPath)) {
+                        sessionPicker.selectFolder(sessionPicker.currentFolderPath)
+                    }
                     sessionPickerSyncToView()
                 }
             }
