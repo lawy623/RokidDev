@@ -35,6 +35,20 @@ class TerminalOutputProcessor(
     fun suppressScrollCaptureFor(durationMs: Long) {
         suppressCaptureUntilNanos = nanoTime() + durationMs * 1_000_000L
     }
+
+    /**
+     * After the resume replay settles: drops the turns the live screen
+     * already shows from the imported scrollback, so browsing (which appends
+     * the screen below the scrollback) never duplicates them (2026-08-08).
+     */
+    @Synchronized
+    fun trimScrollbackToScreen() {
+        screen.trimScrollbackTurns(screen.activeScreenUserCount())
+        scrollBaseline = emptyList()
+        scrollOffsetRows = 0
+        hasNewOutput = false
+        revision++
+    }
     private var scrollOffsetRows = 0
     private var hasNewOutput = false
 

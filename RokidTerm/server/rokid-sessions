@@ -340,6 +340,8 @@ def emit_block(lines, prefix):
     if out:
         out.append("")
     for ln in lines:
+        # Strip ANSI CSI sequences (slash-command outputs carry bold codes).
+        ln = re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", ln)
         clean = "".join(ch if ord(ch) >= 0x20 else " " for ch in ln)
         out.append((prefix + clean[:100]) if clean.strip() else "")
 
@@ -374,9 +376,13 @@ with open(path, encoding="utf-8", errors="replace") as fh:
                 args = re.search(r"<command-args>(.*?)</command-args>", text)
                 a = args.group(1).strip() if args and args.group(1).strip() else ""
                 text = name.group(1).strip() + (" " + a if a else "")
-            # Local-command stdout wrapper: keep only the inner text.
+            # <local-command-stdout> entries are the COMMAND'S OUTPUT, not a
+            # user input — render them as plain output (no ❯ prefix, no
+            # dark fill; user report 2026-08-08). The wrapper tags are
+            # stripped for reading.
+            is_command_output = "<local-command-stdout>" in text
             text = re.sub(r"</?local-command-stdout>", "", text)
-            emit_block(text.splitlines(), "❯ ")
+            emit_block(text.splitlines(), "" if is_command_output else "❯ ")
         elif t == "assistant":
             # Rewritten (compacted) transcripts put assistant content under
             # "message"."content" too — without this the assistant replies

@@ -126,20 +126,50 @@ class TerminalScreen(
         val offset = scrollOffsetRows.coerceIn(0, scrollback.size)
         if (offset == 0) return active.cells.map { it.toList() }
 
-        // While browsing, ONLY the scrollback is shown — the live screen is
-        // NOT appended. Imported transcripts contain the full conversation
-        // (including the tail the live screen also shows), so mixing them
-        // duplicated the visible turns (user report 2026-08-08: 3 turns
-        // appeared as 5). Rows beyond the scrollback are blank; offset 0 is
-        // the live screen.
+        // Browsing shows the scrollback rows ABOVE the live screen (the
+        // screen is appended below, so scrolling up "pulls the full screen
+        // up" — user expectation 2026-08-08). No duplication: captured rows
+        // are always above the screen, and imported transcripts are trimmed
+        // to exclude the turns the screen already shows
+        // (trimScrollbackToScreen).
         val viewportStart = scrollback.size - offset
-        val blank = Array(columns) { TerminalCell() }
         return List(rows) { viewportRow ->
             val combinedRow = viewportStart + viewportRow
             if (combinedRow < scrollback.size) {
                 scrollback[combinedRow].toList()
             } else {
-                blank.toList()
+                active.cells[combinedRow - scrollback.size].toList()
+            }
+        }
+    }
+
+    /** Count of user-message rows (❯ with content) on the ACTIVE screen —
+     *  the turns the resumed live view already shows. */
+    fun activeScreenUserCount(): Int =
+        active.cells.count { row -> row.joinToString("") { it.text }.trim().let { it.startsWith("❯") && it.length > 4 } }
+
+    /**
+     * Drops the last [count] user-message turns from the scrollback (a turn
+     * spans from one ❯ row through the row before the next ❯ row). Called
+     * after a resume replay settles: the imported transcript contains the
+     * full conversation, and the turns the live screen shows must not be
+     * duplicated in the scrollback (2026-08-08).
+     */
+    fun trimScrollbackTurns(count: Int) {
+        if (count <= 0 || scrollback.isEmpty()) return
+        val userIndices = scrollback.indices.filter { i ->
+            scrollback[i].joinToString("") { it.text }.trim().let { it.startsWith("❯") && it.length > 4 }
+        }
+        if (userIndices.isEmpty()) return
+        val keepUntil = userIndices.getOrNull(userIndices.size - count) ?: return
+        if (keepUntil <= 0) {
+            scrollback.clear()
+            totalScrollbackRowsAppended = 0L
+        } else {
+            val removed = scrollback.size - keepUntil
+            repeat(removed) { scrollback.removeAt(scrollback.lastIndex) }
+            if (totalScrollbackRowsAppended > scrollback.size) {
+                totalScrollbackRowsAppended = scrollback.size.toLong()
             }
         }
     }

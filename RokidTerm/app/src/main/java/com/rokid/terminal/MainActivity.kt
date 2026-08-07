@@ -78,6 +78,21 @@ class MainActivity : Activity() {
      *  (user 2026-08-08). */
     private var switchInFlight = false
 
+    /** Terminal-history swipe pair-dedup (TP fast swipes emit DPAD pairs). */
+    private var lastTerminalSwipe: String? = null
+    private var lastTerminalSwipeTime = 0L
+
+    /** Same-direction dedup for terminal-history swipes (120 ms window). */
+    private fun terminalSwipeAllowed(arrow: String): Boolean {
+        val now = android.os.SystemClock.uptimeMillis()
+        if (arrow == lastTerminalSwipe && now - lastTerminalSwipeTime < SWIPE_PAIR_DEDUP_MS) {
+            return false
+        }
+        lastTerminalSwipe = arrow
+        lastTerminalSwipeTime = now
+        return true
+    }
+
     /** Start of the fresh-switch grace window (watcher rebinds suppressed). */
     private var lastSwitchNanos = 0L
 
@@ -759,11 +774,17 @@ class MainActivity : Activity() {
         if (isRingKey(event) && handleRingTerminalKey(keyCode, event)) return true
         when (keyCode) {
             KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_UP -> {
-                publishTerminalFrame(terminalOutput.scrollOlder())
+                // TP fast swipes emit DPAD PAIRS — dedup like the picker or
+                // one swipe scrolls 6 rows instead of 3 (user 2026-08-08).
+                if (terminalSwipeAllowed(ARROW_UP)) {
+                    publishTerminalFrame(terminalOutput.scrollOlder())
+                }
                 return true
             }
             KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_DPAD_DOWN -> {
-                publishTerminalFrame(terminalOutput.scrollNewer())
+                if (terminalSwipeAllowed(ARROW_DOWN)) {
+                    publishTerminalFrame(terminalOutput.scrollNewer())
+                }
                 return true
             }
             KeyEvent.KEYCODE_BACK -> {
@@ -1950,6 +1971,13 @@ class MainActivity : Activity() {
                     // redraw, not a scroll, so nothing is captured locally —
                     // user report 2026-08-08).
                     if (!isNew) fetchConversationHistory(folderPath, sessionId)
+                    // After the replay settles, trim the imported transcript
+                    // to the turns ABOVE the live screen — the screen shows
+                    // the tail, and browsing appends the screen below the
+                    // scrollback (2026-08-08).
+                    mainHandler.postDelayed({
+                        if (sshState == "CONNECTED") terminalOutput.trimScrollbackToScreen()
+                    }, REPLAY_SUPPRESSION_MS + 1500L)
                     if (thenConnect) connectAfterSwitch(endpoint)
                     updateHeader()
                     android.widget.Toast.makeText(
