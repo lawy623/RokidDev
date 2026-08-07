@@ -215,4 +215,20 @@ class SessionPickerStateTest {
         assertEquals(2, picker.conversationCount) // new-slot + id-1
         assertEquals(1, picker.sessionIndex)      // clamped to last row
     }
+
+    @Test
+    fun removeSessionRemovesByIdentityAfterNavigation() {
+        val picker = SessionPickerState().apply {
+            open(null, "id-1")
+            setFolders(listOf(folderA), failed = false)
+        }
+        picker.confirm()
+        picker.move(2) // "id-2"
+        picker.move(1) // back to "id-1"
+
+        picker.removeSession("/srv", "id-2")
+
+        assertEquals(listOf("id-1"), picker.selectedFolder()?.sessions?.map { it.id })
+        assertFalse(picker.deleteArmed)
+    }
 }

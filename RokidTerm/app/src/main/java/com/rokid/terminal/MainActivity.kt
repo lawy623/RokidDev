@@ -1295,17 +1295,20 @@ class MainActivity : Activity() {
         KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN,
         KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> {
             if (event.repeatCount == 0) {
+                // Ring arrivals are inverted: physical right-swipe arrives
+                // as DPAD_LEFT = next (+1); physical left-swipe arrives as
+                // DPAD_RIGHT = previous (-1).
+                val ring = isRingEvent(event)
+                val next = when {
+                    keyCode == KeyEvent.KEYCODE_DPAD_UP -> false
+                    keyCode == KeyEvent.KEYCODE_DPAD_DOWN -> true
+                    ring -> keyCode == KeyEvent.KEYCODE_DPAD_LEFT
+                    else -> keyCode == KeyEvent.KEYCODE_DPAD_RIGHT
+                }
                 if (sessionPicker.deleteArmed) {
-                    // Armed: any swipe moves the selector (right/down = 删除).
-                    val ring = isRingEvent(event)
-                    val next = when {
-                        keyCode == KeyEvent.KEYCODE_DPAD_DOWN || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT -> true
-                        ring -> keyCode == KeyEvent.KEYCODE_DPAD_LEFT // ring right-swipe arrival
-                        else -> false
-                    }
                     sessionPickerMoveDeleteOption(if (next) 1 else -1)
                 } else {
-                    sessionPickerMove(if (keyCode == KeyEvent.KEYCODE_DPAD_UP || keyCode == KeyEvent.KEYCODE_DPAD_LEFT) -1 else 1)
+                    sessionPickerMove(if (next) 1 else -1)
                 }
             }
             true
@@ -1813,7 +1816,7 @@ class MainActivity : Activity() {
             val ok = raw != null && ServerSessionFetcher.parseSwitchResult(raw) != null
             runOnUiThread {
                 if (ok) {
-                    sessionPicker.removeCurrentSession()
+                    sessionPicker.removeSession(folderPath, sessionId)
                     val store = scrollbackStore
                     if (store != null) {
                         runCatching {

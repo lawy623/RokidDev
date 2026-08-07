@@ -143,6 +143,16 @@ class SessionPickerState {
         disarmDelete()
     }
 
+    /** Removes the session with [sessionId] from the folder at [folderPath] (identity-based; safe
+     *  even if the user navigated during the delete round trip) and disarms. */
+    fun removeSession(folderPath: String, sessionId: String) {
+        val folder = folders.firstOrNull { it.path == folderPath } ?: return
+        val updated = folder.sessions.filterNot { it.id == sessionId }
+        folders = folders.map { if (it.path == folderPath) it.copy(sessions = updated) else it }
+        sessionIndex = sessionIndex.coerceAtMost(conversationCount - 1)
+        disarmDelete()
+    }
+
     /** Updates the ▶ markers after a successful switch. */
     fun markCurrent(folderPath: String?, sessionId: String?) {
         currentFolderPath = folderPath
