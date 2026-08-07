@@ -112,6 +112,18 @@ class MainActivity : Activity() {
     /** Start of the fresh-switch grace window (watcher rebinds suppressed). */
     private var lastSwitchNanos = 0L
 
+    /**
+     * True while the bound conversation is a freshly created chat whose real
+     * server session id has not converged yet (the JSONL only appears on the
+     * first message). While pending, the sync watcher must NOT rebind: the
+     * server's "newest session" is still the previous conversation, and a
+     * rebind would import ITS scrollback into the new chat (user report
+     * 2026-08-07). Cleared when discover converges or the next switch starts.
+     */
+    private var newSessionPending = false
+    private var newSessionFolderPath: String? = null
+    private var newSessionPreviousId: String? = null
+
     private var lastScrollbackCount = -1
     private var scrollbackStore: ScrollbackStore? = null
     private var scrollbackFolderKey: String? = null
@@ -1176,6 +1188,28 @@ class MainActivity : Activity() {
         refreshComposer("CLICK TO RECORD / LONG TO SEND")
     }
 
+    /**
+     * Sends a composer draft to the PTY, then presses Enter.
+     *
+     * Claude Code's paste-burst detector treats a trailing \r that arrives in
+     * the SAME read as long text as a newline: the text shows in the input
+     * line but is never submitted (user report 2026-08-07 — 100-500 char
+     * drafts "died" on the input line; short drafts worked because the burst
+     * window closed before the \r arrived). Long drafts therefore go
+     * text-first, with Enter sent alone after the burst window has closed.
+     */
+    private fun sendTextWithEnter(text: String) {
+        if (text.length < LONG_SEND_CHARS) {
+            ssh.sendText(text)
+        } else {
+            ssh.sendCharacters(text)
+            mainHandler.postDelayed(
+                { if (sshState == "CONNECTED") ssh.sendEnter() },
+                SEND_ENTER_DELAY_MS,
+            )
+        }
+    }
+
     private fun sendComposer() {
         if (mode != Mode.COMPOSER) return
         if (composer.text.isBlank()) {
@@ -1195,12 +1229,24 @@ class MainActivity : Activity() {
         if (simulateSend) {
             android.widget.Toast.makeText(this, "TEST SEND OK: $text", android.widget.Toast.LENGTH_SHORT).show()
         } else {
-            ssh.sendText(text)
+            sendTextWithEnter(text)
             // The first message creates the server JSONL: if this chat's
             // cached row is still the "New chat" placeholder, refetch now so
             // the real title appears without exiting the terminal (bug 1
             // follow-up, 2026-08-07).
             refreshNewChatTitleIfNeeded()
+            // A long dictation can outlast the 12 s discovery window: the
+            // first message just created the JSONL, so restart the loop and
+            // converge the binding (clears newSessionPending) — otherwise
+            // the sync watcher stays off and /resume-like moves stop being
+            // followed (2026-08-07).
+            if (newSessionPending) {
+                val path = newSessionFolderPath
+                val tempId = scrollbackSessionId
+                if (path != null && tempId != null) {
+                    discoverNewSessionId(path, tempId, newSessionPreviousId)
+                }
+            }
         }
         inputHistory.add(text)
         composer.clear()
@@ -2002,6 +2048,16 @@ class MainActivity : Activity() {
         // neither the discovery loop nor the watcher may "correct" back to
         // it (bug 1, 2026-08-07).
         val previousSessionId = scrollbackSessionId
+        if (isNew) {
+            // Fresh chat: hold the sync watcher off until the real session
+            // id converges, so it can never import the PREVIOUS
+            // conversation's scrollback into the new chat (2026-08-07).
+            newSessionPending = true
+            newSessionFolderPath = folderPath
+            newSessionPreviousId = previousSessionId
+        } else {
+            newSessionPending = false
+        }
         terminalView.setState(if (thenConnect) "CONNECTING / STARTING" else "SWITCHING…")
         val tmuxSession = endpoint.sessionName
         val workspace = endpoint.workspace
@@ -2153,7 +2209,15 @@ class MainActivity : Activity() {
                         scrollbackSessionId = realId
                         rememberTarget(folderPath, realId)
                         sessionPicker.markCurrent(folderPath, realId)
+                        // Drafts sent under the placeholder key must follow
+                        // the conversation into the real-id file, or the
+                        // recall keys read nothing (user 2026-08-07).
+                        InputHistory.migrate(filesDir, "$folderKey/$tempSessionId", "$folderKey/$realId")
                         inputHistory = InputHistory(filesDir, "$folderKey/$realId")
+                        // Real id converged: the sync watcher may resume
+                        // (a non-converged NEW chat must keep it off, or it
+                        // imports the previous conversation's scrollback).
+                        newSessionPending = false
                         // Replace the placeholder id in the cached list.
                         cachedFolders = cachedFolders?.map { folder ->
                             if (folder.path == folderPath) {
@@ -2259,6 +2323,13 @@ class MainActivity : Activity() {
                 // 2026-08-07). discoverNewSessionId handles the real-id
                 // correction during this window.
                 if (System.nanoTime() - lastSwitchNanos < SWITCH_GRACE_NANOS) return@runOnUiThread
+                // A freshly created chat's real id has not converged yet:
+                // the server's "newest session" is still the PREVIOUS
+                // conversation, and rebinding would import ITS scrollback
+                // into the new chat (user report 2026-08-07). The grace
+                // window alone is not enough — the JSONL only appears on the
+                // first message, which may be minutes later.
+                if (newSessionPending) return@runOnUiThread
                 val folderKey = scrollbackFolderKey ?: return@runOnUiThread
                 val sessionId = scrollbackSessionId ?: return@runOnUiThread
                 val newFolderKey = ServerSessionFetcher.encodeDir(status.cwd)
@@ -2448,6 +2519,14 @@ class MainActivity : Activity() {
         /** Panel auto-exit timings (reply-signal design, 2026-08-07). */
         private const val PANEL_EXIT_POLL_MS = 1_000L
         private const val PANEL_EXIT_REPLY_NANOS = 2_000L * 1_000_000L
+
+        /**
+         * Drafts at or above this length go text-first, Enter separately —
+         * Claude Code's paste-burst detector swallows a trailing \r that
+         * arrives in the same read (2026-08-07).
+         */
+        private const val LONG_SEND_CHARS = 80
+        private const val SEND_ENTER_DELAY_MS = 300L
 
         private const val ARROW_UP = "up"
         private const val ARROW_DOWN = "down"

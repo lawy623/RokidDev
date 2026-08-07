@@ -287,25 +287,52 @@ Verified on the current glasses and Tencent Cloud server:
   invocation failed silently and the picker only ever showed the /srv
   fallback.
 
+### Hardware-verified 2026-08-07 (evening round 2 — long input + cross-chat leaks)
+
+- **Long drafts never submitted (paste-burst)**: Claude Code's paste-burst
+  detector treats a trailing `\r` arriving in the SAME read as long text as
+  a newline — the text renders in the input line but is never submitted.
+  100-500 char drafts died on the input line; short drafts worked because
+  the burst window closed before the `\r` arrived. Fix:
+  `sendTextWithEnter` — drafts ≥80 chars go text-first, Enter alone after
+  300 ms (short drafts keep the original one-shot path).
+- **New-chat history leak (sync watcher clobber)**: a new conversation's
+  server JSONL only appears on the FIRST message, so `status` reports the
+  PREVIOUS conversation as newest until then. The 90 s grace alone was not
+  enough — after it expired (e.g. during a long dictation), the sync
+  watcher rebound to the previous conversation and imported ITS scrollback
+  into the new chat. Fix: `newSessionPending` — the watcher skips rebinds
+  while a fresh chat's real id has not converged; cleared by discovery
+  convergence or the next switch, and the send path restarts the discovery
+  loop after the first message.
+- **New-chat input-history recall empty**: drafts sent under the
+  placeholder session id were orphaned when discovery converged to the
+  real id (the history was rebound to a new key). Fix:
+  `InputHistory.migrate` — the placeholder-key file is renamed to the
+  real-id key at convergence (never clobbers an existing target).
+
 ### Open / pending
 
 - **Session resume support** — implemented 2026-08-07 (conversation picker,
   `rokid-sessions` helper, per-conversation scrollback keying, sync
   watcher); design doc: `.superpowers/sdd/2026-08-07-multi-conversation/`,
   plan docs in the same directory.
+- **Claude interactive panels with input fields** — **PRIORITY NEXT (user
+  2026-08-07: "确实不行，这个要优先解决")**. Panels that combine a list
+  with a text input (e.g. the option panels Claude Code shows for choosing
+  an implementation approach) do NOT work — a real case was hit on-device
+  (2026-08-07). Before designing, capture the actual panel rendering
+  (frame dump + scrollback capture) and the exact failure (which nav keys
+  do what, where input focus sits). Design the interaction (list nav +
+  input focus) from the real case, per the interactive-panel design notes
+  in `rules/input.md` Part 3.
 - **Concurrent sessions (option B)** — each conversation gets its OWN tmux
   session + Claude process; switching re-attaches instead of
   kill+respawn, so a long-running task keeps executing while the user
   works in another conversation (user decision 2026-08-07: implement after
-  the current multi-conversation feature finishes device verification).
-  Design notes: helper `switch` gains attach semantics, unique session
-  names per conversation, local scrollback binding unchanged, cap
-  concurrent processes (~2-3) for server resources.
-- **Claude interactive panels with input fields** — panels that combine a
-  list with a text input (e.g. the option panels Claude Code shows for
-  choosing an implementation approach) are NOT yet handled; not observed in
-  real use as of 2026-08-07. Design the interaction (list nav + input
-  focus) only after a real case is captured.
+  the interactive-panel work above). Design notes: helper `switch` gains
+  attach semantics, unique session names per conversation, local scrollback
+  binding unchanged, cap concurrent processes (~2-3) for server resources.
 - ~~Local terminal history too short / not persistent~~ — **fixed
   2026-08-06**: root cause was the shared-array bug above; baseline-based
   detection deployed and hardware-verified (single-session history grows

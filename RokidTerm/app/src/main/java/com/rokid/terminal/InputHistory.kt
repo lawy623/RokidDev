@@ -130,6 +130,23 @@ class InputHistory(filesDir: File, key: String? = null) {
         fun sanitize(value: String): String = value.replace(Regex("[^A-Za-z0-9_.-]"), "_")
 
         /**
+         * Moves a key's history file to another key. Called when a new
+         * conversation's placeholder session id converges to the server's
+         * REAL id: drafts sent under the placeholder key must follow the
+         * conversation, or the recall keys read an empty file (user report
+         * 2026-08-07 — a new chat "has history but left key recalls
+         * nothing"). Refuses to clobber an existing target.
+         */
+        fun migrate(filesDir: File, fromKey: String, toKey: String) {
+            if (fromKey == toKey || fromKey.isBlank() || toKey.isBlank()) return
+            val from = File(filesDir, "input_history_${sanitize(fromKey)}.txt")
+            val to = File(filesDir, "input_history_${sanitize(toKey)}.txt")
+            if (!from.exists() || to.exists()) return
+            runCatching { from.renameTo(to) }
+                .onFailure { Log.w("InputHistory", "migrate failed", it) }
+        }
+
+        /**
          * Deletes the oldest per-conversation input-history files beyond
          * MAX_FILES (same LRU bound as the scrollback files; user storage
          * question 2026-08-07). Called alongside the scrollback prune.
