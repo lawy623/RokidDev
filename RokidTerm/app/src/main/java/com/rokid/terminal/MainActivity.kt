@@ -63,6 +63,9 @@ class MainActivity : Activity() {
     private var paletteFetchInFlight = false
     private var paletteFetchDone = false
     private var commandFetcher: ServerCommandFetcher? = null
+    private val sessionPicker = SessionPickerState()
+    private var sessionPickerConnectMode = false
+    private var sessionFetcher: ServerSessionFetcher? = null
 
     private var lastScrollbackCount = -1
 
@@ -363,6 +366,7 @@ class MainActivity : Activity() {
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        if (sessionPicker.open && handleSessionPickerKey(keyCode, event)) return true
         if (mode != Mode.ENDPOINTS && isPrimaryKey(keyCode)) {
             return handlePrimaryKeyDown(keyCode, event)
         }
@@ -374,6 +378,12 @@ class MainActivity : Activity() {
     }
 
     override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
+        // The picker consumes every key-up; GO still arbitrates so its
+        // double press can cancel the picker (2026-08-08).
+        if (sessionPicker.open) {
+            if (isRingKey(event) && keyCode == KeyEvent.KEYCODE_F8) handleGoKey(event)
+            return true
+        }
         // GO button arbitration (single/double/long press) resolves on key UP.
         if (isRingKey(event) && keyCode == KeyEvent.KEYCODE_F8) {
             handleGoKey(event)
@@ -567,7 +577,7 @@ class MainActivity : Activity() {
                 if (hold >= GO_LONG_PRESS_MS) {
                     // Long press: ctrl+c normally; blocked in panel mode
                     // (strict isolation — GO single is the panel cancel).
-                    if (mode == Mode.TERMINAL && !panelMode && sshState == "CONNECTED") {
+                    if (mode == Mode.TERMINAL && !panelMode && !sessionPicker.open && sshState == "CONNECTED") {
                         ssh.sendCharacters("")
                     }
                     return
@@ -577,6 +587,7 @@ class MainActivity : Activity() {
                     mainHandler.removeCallbacks(pending)
                     goDoublePending = null
                     when {
+                        sessionPicker.open -> sessionPickerCancel()
                         mode == Mode.TERMINAL && panelMode -> {
                             // Part 3: GO double = cancel & return (ESC + exit).
                             ssh.sendEscape()
@@ -592,7 +603,9 @@ class MainActivity : Activity() {
                 } else {
                     val single = Runnable {
                         goDoublePending = null
-                        if (mode == Mode.COMPOSER) {
+                        if (sessionPicker.open) {
+                            // no-op: GO single does nothing in the picker
+                        } else if (mode == Mode.COMPOSER) {
                             // Composer: GO single = command palette (swapped
                             // with touchpad long press, user decision
                             // 2026-08-06). GO single is blocked in panel mode.
@@ -1162,6 +1175,14 @@ class MainActivity : Activity() {
     /** Confirms the selection: insert "/command " into the draft, close. */
     private fun confirmPaletteSelection() {
         val command = palette.select() ?: return
+        if (command == CommandPaletteState.SESSION_PICKER_ITEM) {
+            palette.close()
+            paletteOpenedBySlash = false
+            paletteSyncToView()
+            cancelComposer("PICKER")
+            openSessionPicker(connectMode = false)
+            return
+        }
         palette.close()
         paletteOpenedBySlash = false
         paletteSyncToView()
@@ -1189,6 +1210,108 @@ class MainActivity : Activity() {
         palette.moveSelection(delta)
         paletteSyncToView()
     }
+
+    // --- Conversation picker (design 2026-08-07; rules/input.md contract) ---
+
+    /**
+     * Modal picker keys: navigate (COIDEA 2/4/5/6, TP swipes, Ring swipes
+     * with its inverted arrival), confirm (TP single / Ring touchpad single
+     * / COIDEA left knob), cancel (Back / COIDEA right knob / Ring GO
+     * double via handleGoKey). Strict isolation: everything else is
+     * consumed while the picker is open.
+     */
+    private fun handleSessionPickerKey(keyCode: Int, event: KeyEvent): Boolean = when (keyCode) {
+        KeyEvent.KEYCODE_2, KeyEvent.KEYCODE_5,
+        KeyEvent.KEYCODE_4, KeyEvent.KEYCODE_6 -> {
+            if (event.repeatCount == 0) {
+                sessionPickerMove(if (keyCode == KeyEvent.KEYCODE_2 || keyCode == KeyEvent.KEYCODE_4) -1 else 1)
+            }
+            true
+        }
+        KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN -> {
+            if (event.repeatCount == 0) {
+                sessionPickerMove(if (keyCode == KeyEvent.KEYCODE_DPAD_UP) -1 else 1)
+            }
+            true
+        }
+        KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> {
+            if (event.repeatCount == 0) {
+                // Ring right-swipe arrives as DPAD_LEFT (inverted) = next.
+                val ring = isRingEvent(event)
+                val next = if (ring) keyCode == KeyEvent.KEYCODE_DPAD_LEFT
+                else keyCode == KeyEvent.KEYCODE_DPAD_RIGHT
+                sessionPickerMove(if (next) 1 else -1)
+            }
+            true
+        }
+        KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_8 -> {
+            if (event.repeatCount == 0) sessionPickerConfirm()
+            true
+        }
+        KeyEvent.KEYCODE_D, KeyEvent.KEYCODE_BACK -> {
+            if (event.repeatCount == 0) sessionPickerCancel()
+            true
+        }
+        KeyEvent.KEYCODE_F8 -> {
+            handleGoKey(event)
+            true
+        }
+        else -> true
+    }
+
+    private fun sessionPickerSyncToView() {
+        terminalView.setSessionPicker(
+            SessionPickerUi(
+                open = sessionPicker.open,
+                loading = sessionPicker.loading,
+                error = sessionPicker.error,
+                level = sessionPicker.level,
+                folders = sessionPicker.folders,
+                folderIndex = sessionPicker.folderIndex,
+                sessionIndex = sessionPicker.sessionIndex,
+                currentFolderPath = sessionPicker.currentFolderPath,
+                currentSessionId = sessionPicker.currentSessionId,
+            ),
+        )
+    }
+
+    private fun sessionPickerMove(delta: Int) {
+        if (!sessionPicker.open) return
+        sessionPicker.move(delta)
+        sessionPickerSyncToView()
+    }
+
+    private fun sessionPickerConfirm() {
+        if (!sessionPicker.open) return
+        val target = sessionPicker.confirm()
+        sessionPickerSyncToView()
+        if (target == null) return // descended to the conversation level
+        sessionPicker.close()
+        sessionPickerSyncToView()
+        val sessionId = target.sessionId ?: java.util.UUID.randomUUID().toString()
+        switchToTarget(target.folderPath, sessionId, isNew = target.sessionId == null,
+            thenConnect = sessionPickerConnectMode)
+    }
+
+    private fun sessionPickerCancel() {
+        if (!sessionPicker.open) return
+        if (sessionPicker.back()) {
+            sessionPickerSyncToView()
+            return
+        }
+        sessionPicker.close()
+        sessionPickerSyncToView()
+        val wasConnectMode = sessionPickerConnectMode
+        sessionPickerConnectMode = false
+        if (wasConnectMode) {
+            asr.disconnect()
+            showEndpointPicker()
+        }
+    }
+
+    // TODO(Task 9): replaced by the real implementations.
+    private fun openSessionPicker(connectMode: Boolean) = Unit
+    private fun switchToTarget(folderPath: String, sessionId: String, isNew: Boolean, thenConnect: Boolean) = Unit
 
     // --- Part 3: command panel passthrough (rules/input.md) ---
     //
