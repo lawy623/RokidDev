@@ -114,6 +114,18 @@ class SessionPickerState {
     }
 
     /**
+     * Moves the conversation-level selection onto the CURRENT (▶) session
+     * when it is in the selected folder; no-op (stays on the new-chat slot)
+     * otherwise. In-session switching starts on the current conversation
+     * (user 2026-08-08); the connect flow keeps the new-chat default.
+     */
+    fun selectCurrentSession() {
+        if (!open || level != 1) return
+        val idx = selectedFolder()?.sessions?.indexOfFirst { it.id == currentSessionId } ?: -1
+        if (idx >= 0) sessionIndex = idx + 1
+    }
+
+    /**
      * Level 0: descends to conversations, returns null. Level 1: returns the
      * chosen target (session id null = new conversation). Does NOT close.
      */

@@ -1457,8 +1457,14 @@ class MainActivity : Activity() {
             return
         }
         val target = sessionPicker.confirm()
-        sessionPickerSyncToView()
-        if (target == null) return // descended to the conversation level
+        if (target == null) {
+            // Descended: in-session switching starts on the CURRENT (▶)
+            // conversation, not the new-chat slot (user 2026-08-08). The
+            // connect flow keeps the new-chat default.
+            if (!sessionPickerConnectMode) sessionPicker.selectCurrentSession()
+            sessionPickerSyncToView()
+            return
+        }
         sessionPicker.close()
         sessionPickerSyncToView()
         val sessionId = target.sessionId ?: java.util.UUID.randomUUID().toString()

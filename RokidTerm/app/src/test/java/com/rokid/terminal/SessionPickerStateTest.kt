@@ -246,4 +246,26 @@ class SessionPickerStateTest {
         assertEquals(1, picker.folderIndex)
         assertFalse(picker.selectFolder(null))
     }
+
+    @Test
+    fun selectCurrentSessionMovesOntoTheMarkedConversation() {
+        val picker = SessionPickerState().apply {
+            open(null, "id-2")
+            setFolders(listOf(folderA), failed = false)
+        }
+        picker.confirm() // descend, new-chat slot selected
+
+        picker.selectCurrentSession()
+
+        assertEquals(2, picker.sessionIndex) // + New Chat(0), id-1(1), id-2(2)
+
+        // Not in the list: stays on the new-chat slot.
+        val other = SessionPickerState().apply {
+            open(null, "unknown-id")
+            setFolders(listOf(folderA), failed = false)
+        }
+        other.confirm()
+        other.selectCurrentSession()
+        assertEquals(0, other.sessionIndex)
+    }
 }
