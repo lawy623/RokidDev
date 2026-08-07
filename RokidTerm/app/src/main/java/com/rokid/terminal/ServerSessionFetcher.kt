@@ -13,10 +13,15 @@ import java.util.Properties
  * terminal pixels. Parsers are pure so the protocol is unit-tested without
  * JSch. The helper's `switch` verb verifies the launch server-side (polls
  * up to ~15 s), so its timeout is longer than list/status.
+ *
+ * Unlike the one-shot ServerCommandFetcher, this fetcher is called many
+ * times per connection (list once, status every ~30 s, switch per switch),
+ * so a fresh identity is decrypted from the keystore on every run() and
+ * zeroed right after JSch imports it — never cached across calls.
  */
 class ServerSessionFetcher(
     private val endpoint: EndpointProfile,
-    private val identity: DeviceKeyStore.Identity,
+    private val keyStore: DeviceKeyStore,
 ) {
     fun listSessions(baseDir: String): List<RemoteFolder>? =
         run("$HELPER list ${shellQuote(baseDir)}")?.let(::parseList)
@@ -41,9 +46,11 @@ class ServerSessionFetcher(
 
     private fun run(command: String, timeoutMs: Int = FETCH_TIMEOUT_MS): String? {
         var session: Session? = null
+        var channel: ChannelExec? = null
         return try {
             val jsch = JSch()
             JSch.setConfig("ssh-ed25519", "com.jcraft.jsch.bc.SignatureEd25519")
+            val identity = keyStore.getOrCreate()
             try {
                 jsch.addIdentity("sessions-device", identity.privateKey, null, null)
             } finally {
@@ -61,7 +68,7 @@ class ServerSessionFetcher(
                 serverAliveCountMax = 3
                 connect(15_000)
             }
-            val channel = session.openChannel("exec") as ChannelExec
+            channel = session.openChannel("exec") as ChannelExec
             channel.setCommand(command)
             val stdout = channel.inputStream
             channel.connect(5_000)
@@ -70,6 +77,7 @@ class ServerSessionFetcher(
             android.util.Log.w("RokidTerminal", "session helper failed: ${error.message ?: error.javaClass.simpleName}")
             null
         } finally {
+            runCatching { channel?.disconnect() }
             session?.disconnect()
         }
     }
@@ -81,13 +89,13 @@ class ServerSessionFetcher(
         while (System.currentTimeMillis() < deadline) {
             if (stdout.available() > 0) {
                 val count = stdout.read(buffer, 0, buffer.size)
-                if (count < 0) break
+                if (count < 0) return bytes.toString(Charsets.UTF_8)
                 bytes.write(buffer, 0, count)
             } else {
                 Thread.sleep(50)
             }
         }
-        return bytes.toString(Charsets.UTF_8)
+        return null // timed out without EOF
     }
 
     companion object {
