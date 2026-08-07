@@ -214,6 +214,10 @@ Verified on the current glasses and Tencent Cloud server:
   fetch takes seconds on this network — the picker shows the last fetched
   list instantly; stale folders are safe because the server `switch` verb
   re-validates the target dir).
+- Input history is per-conversation (2026-08-08): each conversation owns its
+  own draft cache file `input_history_<folderKey>_<sessionId>.txt` (50
+  entries); the legacy global `input_history.txt` was DISCARDED (user
+  decision — test drafts only, no migration).
 - Picker fast-swipe pair dedup: the TP fast swipe emits DPAD PAIRS
   (LEFT+UP / RIGHT+DOWN) within a few ms; the picker dedups the same
   direction within 120 ms (same rule as panel mode), otherwise one swipe
@@ -331,7 +335,3 @@ Before a hardware handoff, verify:
 - Host-key rejection, public-key authentication, reconnect, tmux resume, Back behavior, focus, and the default 480x640 -> 46x30 redraw all behave correctly.
 - No API keys, private keys, Claude output, or source code are printed to logcat.
 - A release build disables debugging and removes `run-as` provisioning/debug inspection paths before long-term use.
-- Input history is per-conversation (2026-08-08): each conversation owns its
-  own draft cache file `input_history_<folderKey>_<sessionId>.txt` (50
-  entries); the legacy global `input_history.txt` was DISCARDED (user
-  decision — test drafts only, no migration).
