@@ -47,8 +47,10 @@ class CommandPaletteState {
 
     companion object {
         /** Local palette action that opens the conversation picker (design 2026-08-07).
-         *  English: all UI hints/labels are English (user rule 2026-08-08). */
-        const val SESSION_PICKER_ITEM = "[Switch Chat]"
+         *  English: all UI hints/labels are English (user rule 2026-08-08).
+         *  Banner style with self-sizing dashes (user 2026-08-08): 26 chars
+         *  fits the 54-column row width at 16px. The renderer centers it. */
+        const val SESSION_PICKER_ITEM = ">-----Switch Session-----<"
 
         /**
          * The displayed palette: the bare "/" (voice-continuation) and the

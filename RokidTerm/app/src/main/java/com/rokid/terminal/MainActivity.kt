@@ -1388,7 +1388,22 @@ class MainActivity : Activity() {
     }
 
     private fun sessionPickerArmDelete() {
-        if (sessionPicker.armDelete()) sessionPickerSyncToView()
+        if (sessionPicker.armDelete()) {
+            sessionPickerSyncToView()
+        } else {
+            // Tell the user WHY the arm failed (user 2026-08-08): the ▶
+            // current conversation is never deletable; anything else (folder
+            // level / + New Chat slot) needs a session row selected.
+            val onCurrent = sessionPicker.open && sessionPicker.level == 1 &&
+                sessionPicker.sessionIndex >= 1 &&
+                sessionPicker.selectedFolder()?.sessions
+                    ?.getOrNull(sessionPicker.sessionIndex - 1)?.id == sessionPicker.currentSessionId
+            android.widget.Toast.makeText(
+                this,
+                if (onCurrent) "CURRENT SESSION NOT DELETABLE" else "SELECT A SESSION",
+                android.widget.Toast.LENGTH_SHORT,
+            ).show()
+        }
     }
 
     private fun sessionPickerMoveDeleteOption(delta: Int) {

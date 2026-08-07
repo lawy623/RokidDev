@@ -832,7 +832,13 @@ class TerminalView(context: Context) : View(context) {
             }
             paint.style = Paint.Style.FILL
             val text = if (paint.measureText(item) > rowWidth) item.take(12) + "…" else item
-            canvas.drawText(text, listLeft, rowTop + 17f, paint)
+            val x = if (item == CommandPaletteState.SESSION_PICKER_ITEM) {
+                // Banner item: centered (user 2026-08-08).
+                listLeft + (rowWidth - paint.measureText(text)) / 2f
+            } else {
+                listLeft
+            }
+            canvas.drawText(text, x, rowTop + 17f, paint)
         }
 
         // Scrollbar when the list overflows the visible window.
