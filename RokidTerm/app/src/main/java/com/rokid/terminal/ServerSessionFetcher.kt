@@ -31,6 +31,17 @@ class ServerSessionFetcher(
         return parseStatus(out)
     }
 
+    /** Deletes a conversation's transcript on the server (irrecoverable). */
+    fun deleteConversation(
+        tmuxSession: String,
+        baseDir: String,
+        folderPath: String,
+        sessionId: String,
+    ): String? = run(
+        "$HELPER delete ${shellQuote(tmuxSession)} ${shellQuote(baseDir)} " +
+            "${shellQuote(folderPath)} ${shellQuote(sessionId)}",
+    )
+
     /** Returns the helper's raw output; the caller parses with [parseSwitchResult]. */
     fun switchConversation(
         tmuxSession: String,
