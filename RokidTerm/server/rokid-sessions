@@ -13,9 +13,15 @@ encode() { printf '%s' "$1" | tr -c 'A-Za-z0-9' '-'; }
 
 # First user-message text of a session JSONL (single line, control chars
 # stripped, <= 40 chars). Streams; exits at the first user text block.
+# Handles BOTH transcript shapes: entries with a direct "content" field and
+# entries rewritten by compaction/summarization where the message lives
+# under "message"."content" (verified against real server transcripts
+# 2026-08-08). Slash-command entries are stored as
+# "<command-name>/x</command-name>..." — the title becomes the command
+# (with args when present). System-injected entries (isMeta) are skipped.
 first_user_title() {
   python3 -c '
-import json, sys
+import json, re, sys
 p = sys.argv[1]
 with open(p, encoding="utf-8", errors="replace") as fh:
     for line in fh:
@@ -23,22 +29,31 @@ with open(p, encoding="utf-8", errors="replace") as fh:
             e = json.loads(line)
         except Exception:
             continue
-        if e.get("type") != "user":
+        if e.get("type") != "user" or e.get("isMeta"):
             continue
         c = e.get("content")
+        if c is None:
+            m = e.get("message")
+            c = m.get("content") if isinstance(m, dict) else None
         t = ""
         if isinstance(c, str):
             t = c
-        else:
-            for b in (c or []):
+        elif isinstance(c, list):
+            for b in c:
                 if isinstance(b, dict) and isinstance(b.get("text"), str):
                     t = b["text"]
                     break
-        if t:
-            t = "".join(ch if ord(ch) >= 0x20 else " " for ch in t)
-            t = t.replace("\t", " ").strip()
-            print(t[:40])
-            sys.exit(0)
+        if not t:
+            continue
+        name = re.search(r"<command-name>(.*?)</command-name>", t)
+        if name:
+            args = re.search(r"<command-args>(.*?)</command-args>", t)
+            a = args.group(1).strip() if args and args.group(1).strip() else ""
+            t = name.group(1).strip() + (" " + a if a else "")
+        t = "".join(ch if ord(ch) >= 0x20 else " " for ch in t)
+        t = t.replace("\t", " ").strip()
+        print(t[:40])
+        sys.exit(0)
 ' "$1" 2>/dev/null
 }
 
