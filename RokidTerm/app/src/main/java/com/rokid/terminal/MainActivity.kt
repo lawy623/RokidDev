@@ -12,7 +12,6 @@ import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.ViewConfiguration
 import android.view.WindowManager
-import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
@@ -68,6 +67,25 @@ class MainActivity : Activity() {
     private var sessionFetcher: ServerSessionFetcher? = null
 
     private var lastScrollbackCount = -1
+    private var scrollbackStore: ScrollbackStore? = null
+    private var scrollbackFolderKey: String? = null
+    private var scrollbackSessionId: String? = null
+
+    private val prefs = getSharedPreferences(SESSION_PREFS, MODE_PRIVATE)
+
+    /**
+     * Sync watcher (design 2026-08-07 §3.3): while connected with a bound
+     * conversation, re-reads `rokid-sessions status` every SESSION_SYNC_MS
+     * and re-binds local history when the server's active session changed
+     * out-of-band (manual /resume, /cd). Local files are caches; the server
+     * JSONL is authoritative.
+     */
+    private val sessionSyncRunnable = object : Runnable {
+        override fun run() {
+            pollSessionSync()
+            mainHandler.postDelayed(this, SESSION_SYNC_MS)
+        }
+    }
 
     private val drainTerminalFrame = Runnable {
         pendingTerminalFrame.getAndSet(null)?.let(terminalView::setTerminalFrame)
@@ -130,6 +148,8 @@ class MainActivity : Activity() {
         setContentView(terminalView)
         terminalView.post { terminalView.requestFocus() }
         terminalView.post { updateKeyboardIndicator() }
+        scrollbackStore = ScrollbackStore(filesDir)
+        mainHandler.post(sessionSyncRunnable)
         registerReceiver(
             inputDeviceReceiver,
             android.content.IntentFilter(ACTION_INPUT_DEVICE_CHANGED),
@@ -296,6 +316,10 @@ class MainActivity : Activity() {
      * reaches the app, so their ordered system broadcasts are the only signal.
      */
     private fun handleSystemKeyAction(action: Int) {
+        // Strict isolation: while the conversation picker is open, both the
+        // long-press and shutter broadcasts are consumed with no action
+        // (no ctrl+c, no ESC, no shutter handling).
+        if (sessionPicker.open) return
         when (action) {
             ACTION_LONG_PRESS -> {
                 if (mode == Mode.COMPOSER) {
@@ -396,6 +420,9 @@ class MainActivity : Activity() {
     }
 
     override fun onKeyMultiple(keyCode: Int, repeatCount: Int, event: KeyEvent): Boolean {
+        // Strict isolation: characters never reach the PTY/composer while
+        // the conversation picker is open.
+        if (sessionPicker.open) return true
         event.characters?.takeIf { it.isNotEmpty() }?.let { characters ->
             when (mode) {
                 Mode.COMPOSER -> {
@@ -1309,10 +1336,6 @@ class MainActivity : Activity() {
         }
     }
 
-    // TODO(Task 9): replaced by the real implementations.
-    private fun openSessionPicker(connectMode: Boolean) = Unit
-    private fun switchToTarget(folderPath: String, sessionId: String, isNew: Boolean, thenConnect: Boolean) = Unit
-
     // --- Part 3: command panel passthrough (rules/input.md) ---
     //
     // After sending a "/"-command Claude opens its own picker/menu; the app
@@ -1618,11 +1641,8 @@ class MainActivity : Activity() {
         endpointStore.select(endpoint.id)
         activeEndpoint = endpoint
         mode = Mode.TERMINAL
+        panelMode = false
         terminalView.showTerminal(endpoint, terminalOutput.reset())
-        // Restore this endpoint's locally persisted history so past Claude
-        // conversations stay browsable after exit/reconnect (in-memory
-        // scrollback alone is cleared by the reset above).
-        terminalOutput.importScrollbackText(loadScrollback(endpoint.id))
         val identity = try {
             DeviceKeyStore(this, endpoint.id).getOrCreate()
         } catch (error: Exception) {
@@ -1630,9 +1650,152 @@ class MainActivity : Activity() {
             return
         }
         commandFetcher = ServerCommandFetcher(endpoint, identity)
-        panelMode = false
-        ssh.connect(endpoint, identity)
+        // The session fetcher takes the keystore, not an identity: it is
+        // called repeatedly per connection (list, status every 30 s, switch)
+        // and must fetch a fresh identity per call (fill(0) zeroes it).
+        sessionFetcher = ServerSessionFetcher(endpoint, DeviceKeyStore(this, endpoint.id))
+        // Every connect starts with the conversation picker (user decision
+        // 2026-08-07); the chosen target launches via the server helper.
+        openSessionPicker(connectMode = true)
+    }
+
+    private fun openSessionPicker(connectMode: Boolean) {
+        val endpoint = activeEndpoint ?: return
+        sessionPickerConnectMode = connectMode
+        clearPrimaryGesture()
+        sessionPicker.open(rememberedFolder(endpoint.id), rememberedSession(endpoint.id))
+        sessionPickerSyncToView()
+        val fetcher = sessionFetcher ?: return
+        val workspace = endpoint.workspace
+        Thread {
+            val folders = fetcher.listSessions(workspace)
+            runOnUiThread {
+                if (folders.isNullOrEmpty()) {
+                    // Helper unreachable or no folders: fall back to a single
+                    // "new conversation" entry in the workspace.
+                    sessionPicker.setFolders(
+                        listOf(RemoteFolder(workspace, ServerSessionFetcher.encodeDir(workspace), emptyList())),
+                        failed = folders == null,
+                    )
+                } else {
+                    sessionPicker.setFolders(folders, failed = false)
+                }
+                sessionPickerSyncToView()
+            }
+        }.start()
+    }
+
+    /**
+     * Runs the server-side switch (kill/respawn Claude in the tmux pane with
+     * the target folder/session), then binds local history to the target.
+     * At connect time a failure falls back to the legacy fixed launch.
+     */
+    private fun switchToTarget(folderPath: String, sessionId: String, isNew: Boolean, thenConnect: Boolean) {
+        val endpoint = activeEndpoint ?: return
+        val fetcher = sessionFetcher ?: return
+        persistScrollback()
+        terminalView.setState(if (thenConnect) "CONNECTING / STARTING" else "SWITCHING…")
+        val tmuxSession = endpoint.sessionName
+        val workspace = endpoint.workspace
+        Thread {
+            val raw = fetcher.switchConversation(tmuxSession, workspace, folderPath, sessionId, isNew)
+            val ok = raw != null && ServerSessionFetcher.parseSwitchResult(raw) != null
+            runOnUiThread {
+                if (ok) {
+                    bindScrollback(folderPath, sessionId)
+                    rememberTarget(folderPath, sessionId)
+                    sessionPicker.markCurrent(folderPath, sessionId)
+                    if (thenConnect) connectAfterSwitch(endpoint)
+                    updateHeader()
+                    android.widget.Toast.makeText(
+                        this, "已切换会话", android.widget.Toast.LENGTH_SHORT,
+                    ).show()
+                } else if (thenConnect) {
+                    // Helper unavailable (not yet deployed / server error):
+                    // preserve the pre-change behavior via the legacy launch.
+                    android.util.Log.w("RokidTerminal", "session switch failed; legacy launch")
+                    bindScrollback(workspace, sessionId)
+                    rememberTarget(workspace, sessionId)
+                    connectAfterSwitch(endpoint, useLegacy = true)
+                } else {
+                    android.widget.Toast.makeText(
+                        this, "切换失败", android.widget.Toast.LENGTH_SHORT,
+                    ).show()
+                    updateHeader()
+                }
+            }
+        }.start()
+    }
+
+    private fun connectAfterSwitch(endpoint: EndpointProfile, useLegacy: Boolean = false) {
+        val identity = try {
+            DeviceKeyStore(this, endpoint.id).getOrCreate()
+        } catch (error: Exception) {
+            terminalView.setState("KEY ERROR: ${error.message}")
+            return
+        }
+        ssh.connect(endpoint, identity, legacy = useLegacy)
         asr.connect(endpoint)
+    }
+
+    /** Sets the scrollback binding and imports that conversation's history. */
+    private fun bindScrollback(folderPath: String, sessionId: String) {
+        scrollbackFolderKey = ServerSessionFetcher.encodeDir(folderPath)
+        scrollbackSessionId = sessionId
+        val endpoint = activeEndpoint
+        val store = scrollbackStore
+        var rows = loadScrollback()
+        if (rows.isEmpty() && endpoint != null && store != null) {
+            // One-time migration from the pre-conversation per-endpoint file.
+            val legacy = store.legacyFile(endpoint.id)
+            if (legacy.exists()) {
+                rows = store.read(legacy)
+                runCatching { legacy.delete() }
+            }
+        }
+        terminalOutput.importScrollbackText(rows)
+    }
+
+    private fun rememberTarget(folderPath: String, sessionId: String) {
+        val endpoint = activeEndpoint ?: return
+        prefs.edit()
+            .putString("last_folder_${endpoint.id}", folderPath)
+            .putString("last_session_${endpoint.id}", sessionId)
+            .apply()
+    }
+
+    private fun rememberedFolder(endpointId: String): String? = prefs.getString("last_folder_$endpointId", null)
+    private fun rememberedSession(endpointId: String): String? = prefs.getString("last_session_$endpointId", null)
+
+    private fun pollSessionSync() {
+        val fetcher = sessionFetcher ?: return
+        val endpoint = activeEndpoint ?: return
+        if (sshState != "CONNECTED" || sessionPicker.open) return
+        val folderKey = scrollbackFolderKey ?: return
+        val sessionId = scrollbackSessionId ?: return
+        Thread {
+            val status = fetcher.status(endpoint.sessionName)
+            runOnUiThread {
+                if (status == null || status.cwd == null) return@runOnUiThread
+                val newFolderKey = ServerSessionFetcher.encodeDir(status.cwd)
+                val folderChanged = newFolderKey != folderKey
+                val sessionChanged = status.sessionId != null && status.sessionId != sessionId
+                if (!folderChanged && !sessionChanged) return@runOnUiThread
+                // The server's active conversation moved (manual /resume or
+                // /cd): persist under the old key, rebind to the new one.
+                persistScrollback()
+                scrollbackFolderKey = newFolderKey
+                scrollbackSessionId = status.sessionId ?: sessionId
+                val store = scrollbackStore
+                if (store != null) {
+                    terminalOutput.importScrollbackText(
+                        store.read(store.file(endpoint.id, newFolderKey, scrollbackSessionId!!)),
+                    )
+                }
+                sessionPicker.markCurrent(status.cwd, scrollbackSessionId)
+                android.widget.Toast.makeText(this, "已切换会话", android.widget.Toast.LENGTH_SHORT).show()
+            }
+        }.start()
     }
 
     private fun reconnectActiveEndpoint() {
@@ -1648,36 +1811,31 @@ class MainActivity : Activity() {
     }
 
     /**
-     * App-private per-endpoint scrollback persistence: history is captured in
-     * memory during a session and saved here on disconnect/exit, then restored
-     * on the next connect. Files live in filesDir (never shared storage).
+     * App-private per-conversation scrollback persistence (design
+     * 2026-08-07): history is captured in memory during a session and saved
+     * on disconnect/exit under the bound conversation's key, then restored
+     * when that conversation is bound again. Files live in filesDir (never
+     * shared storage); bounded at ScrollbackStore.MAX_ROWS rows per file and
+     * MAX_FILES per endpoint (LRU). The binding is set by bindScrollback.
+     * Safe no-op while no conversation is bound (e.g. the connect-picker
+     * phase).
      */
-    private fun scrollbackFile(endpointId: String): File =
-        File(filesDir, "scrollback_${endpointId.replace(Regex("[^A-Za-z0-9_.-]"), "_")}.txt")
-
     private fun persistScrollback() {
         val endpoint = activeEndpoint ?: return
-        // Persist only the most recent rows (in-memory browsing keeps the full
-        // 5000-row cap; the file is overwritten each session, so storage stays
-        // bounded at ~PERSISTED_SCROLLBACK_ROWS rows per endpoint).
-        val rows = terminalOutput.exportScrollbackText().takeLast(PERSISTED_SCROLLBACK_ROWS)
-        if (rows.isEmpty()) return
-        try {
-            scrollbackFile(endpoint.id).writeText(rows.joinToString("\n"))
-        } catch (error: Exception) {
-            android.util.Log.w("RokidTerminal", "scrollback save failed: ${error.message}")
-        }
+        val folderKey = scrollbackFolderKey ?: return
+        val sessionId = scrollbackSessionId ?: return
+        val store = scrollbackStore ?: return
+        val rows = terminalOutput.exportScrollbackText()
+        store.write(store.file(endpoint.id, folderKey, sessionId), rows)
+        store.prune(endpoint.id)
     }
 
-    private fun loadScrollback(endpointId: String): List<String> {
-        val file = scrollbackFile(endpointId)
-        if (!file.exists()) return emptyList()
-        return try {
-            file.readText().split("\n")
-        } catch (error: Exception) {
-            android.util.Log.w("RokidTerminal", "scrollback load failed: ${error.message}")
-            emptyList()
-        }
+    private fun loadScrollback(): List<String> {
+        val endpoint = activeEndpoint ?: return emptyList()
+        val folderKey = scrollbackFolderKey ?: return emptyList()
+        val sessionId = scrollbackSessionId ?: return emptyList()
+        val store = scrollbackStore ?: return emptyList()
+        return store.read(store.file(endpoint.id, folderKey, sessionId))
     }
 
     private fun importPendingProfile() {
@@ -1746,12 +1904,10 @@ class MainActivity : Activity() {
         /** Single/double-press arbitration window for the COIDEA right knob (contract). */
         const val RIGHT_KNOB_DOUBLE_WINDOW_MS = 500L
 
-        /**
-         * Persisted history bound (~50-150 Claude exchanges; the file is
-         * overwritten each session, so storage is capped at ~55 KB/endpoint).
-         * In-memory browsing keeps the full 5000-row scrollback.
-         */
-        const val PERSISTED_SCROLLBACK_ROWS = 1000
+        /** Sync-watcher poll interval (design 2026-08-07 §3.3); see [sessionSyncRunnable]. */
+        const val SESSION_SYNC_MS = 30_000L
+        /** Prefs file for the remembered conversation target (see [rememberTarget]). */
+        private const val SESSION_PREFS = "session_picker"
 
         /**
          * Local fallback command list (contract: never claim completeness;
