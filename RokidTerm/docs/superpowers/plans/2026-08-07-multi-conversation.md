@@ -473,7 +473,7 @@ import java.util.Properties
  */
 class ServerSessionFetcher(
     private val endpoint: EndpointProfile,
-    private val identity: DeviceKeyStore.Identity,
+    private val keyStore: DeviceKeyStore,
 ) {
     fun listSessions(baseDir: String): List<RemoteFolder>? =
         run("$HELPER list ${shellQuote(baseDir)}")?.let(::parseList)
@@ -496,11 +496,19 @@ class ServerSessionFetcher(
         timeoutMs = SWITCH_TIMEOUT_MS,
     )
 
+    /**
+     * Takes the keystore, NOT an identity: this fetcher is called repeatedly
+     * per connection (list, status every 30 s, switch), and a shared identity
+     * would be zeroed by the first call's fill(0). A fresh identity is
+     * decrypted per run and cleared after import (2026-08-08, review fix).
+     */
     private fun run(command: String, timeoutMs: Int = FETCH_TIMEOUT_MS): String? {
         var session: Session? = null
+        var channel: ChannelExec? = null
         return try {
             val jsch = JSch()
             JSch.setConfig("ssh-ed25519", "com.jcraft.jsch.bc.SignatureEd25519")
+            val identity = keyStore.getOrCreate()
             try {
                 jsch.addIdentity("sessions-device", identity.privateKey, null, null)
             } finally {
@@ -518,7 +526,7 @@ class ServerSessionFetcher(
                 serverAliveCountMax = 3
                 connect(15_000)
             }
-            val channel = session.openChannel("exec") as ChannelExec
+            channel = session.openChannel("exec") as ChannelExec
             channel.setCommand(command)
             val stdout = channel.inputStream
             channel.connect(5_000)
@@ -527,10 +535,12 @@ class ServerSessionFetcher(
             android.util.Log.w("RokidTerminal", "session helper failed: ${error.message ?: error.javaClass.simpleName}")
             null
         } finally {
+            runCatching { channel?.disconnect() }
             session?.disconnect()
         }
     }
 
+    /** Returns null when the deadline expired without EOF (timeout ≠ empty output). */
     private fun readAll(stdout: java.io.InputStream, timeoutMs: Int): String? {
         val bytes = ByteArrayOutputStream()
         val buffer = ByteArray(4096)
@@ -538,13 +548,13 @@ class ServerSessionFetcher(
         while (System.currentTimeMillis() < deadline) {
             if (stdout.available() > 0) {
                 val count = stdout.read(buffer, 0, buffer.size)
-                if (count < 0) break
+                if (count < 0) return bytes.toString(Charsets.UTF_8)
                 bytes.write(buffer, 0, count)
             } else {
                 Thread.sleep(50)
             }
         }
-        return bytes.toString(Charsets.UTF_8)
+        return null // timed out without EOF
     }
 
     companion object {
@@ -1878,7 +1888,10 @@ Replace `connectSelected` (line ~1490):
             return
         }
         commandFetcher = ServerCommandFetcher(endpoint, identity)
-        sessionFetcher = ServerSessionFetcher(endpoint, identity)
+        // The session fetcher takes the keystore, not an identity: it is
+        // called repeatedly per connection (list, status every 30 s, switch)
+        // and must fetch a fresh identity per call (fill(0) zeroes it).
+        sessionFetcher = ServerSessionFetcher(endpoint, DeviceKeyStore(this, endpoint.id))
         // Every connect starts with the conversation picker (user decision
         // 2026-08-07); the chosen target launches via the server helper.
         openSessionPicker(connectMode = true)
