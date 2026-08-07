@@ -72,14 +72,14 @@ class SessionPickerStateTest {
         assertEquals("/srv", picker.currentFolderPath)
         assertEquals("id-2", picker.currentSessionId)
         assertTrue(picker.loading)
-        assertEquals(2, picker.conversationCount) // setFolders already applied
+        assertEquals(3, picker.conversationCount) // new-slot + 2 sessions
     }
 
     @Test
     fun moveWrapsWithinFolderLevel() {
         val picker = SessionPickerState().apply {
-            setFolders(listOf(folderA, folderB), failed = false)
             open(null, null)
+            setFolders(listOf(folderA, folderB), failed = false)
         }
 
         picker.move(-1)
@@ -91,8 +91,8 @@ class SessionPickerStateTest {
     @Test
     fun confirmOnFolderLevelDescendsToConversations() {
         val picker = SessionPickerState().apply {
-            setFolders(listOf(folderA, folderB), failed = false)
             open(null, null)
+            setFolders(listOf(folderA, folderB), failed = false)
         }
 
         assertNull(picker.confirm()) // descends, returns null
@@ -104,8 +104,8 @@ class SessionPickerStateTest {
     @Test
     fun confirmOnConversationLevelReturnsTarget() {
         val picker = SessionPickerState().apply {
-            setFolders(listOf(folderA), failed = false)
             open(null, null)
+            setFolders(listOf(folderA), failed = false)
         }
         picker.confirm() // descend
         picker.move(2)   // wrap: 0 -> 1 -> 2 (the second session)
@@ -117,8 +117,8 @@ class SessionPickerStateTest {
     @Test
     fun newConversationSlotYieldsNullSessionId() {
         val picker = SessionPickerState().apply {
-            setFolders(listOf(folderA), failed = false)
             open(null, null)
+            setFolders(listOf(folderA), failed = false)
         }
         picker.confirm() // descend, sessionIndex = 0 = new slot
 
@@ -128,8 +128,8 @@ class SessionPickerStateTest {
     @Test
     fun backMovesUpOneLevelThenCloses() {
         val picker = SessionPickerState().apply {
-            setFolders(listOf(folderA, folderB), failed = false)
             open(null, null)
+            setFolders(listOf(folderA, folderB), failed = false)
         }
         picker.confirm() // descend
 
@@ -168,8 +168,8 @@ class SessionPickerStateTest {
     @Test
     fun setFoldersReappliedAfterOpenKeepsLevelsUsable() {
         val picker = SessionPickerState().apply {
-            setFolders(listOf(folderA), failed = false)
             open(null, null)
+            setFolders(listOf(folderA), failed = false)
         }
         picker.confirm()
         picker.move(1)
@@ -262,7 +262,8 @@ class SessionPickerState {
         currentSessionId = preferredSessionId
         open = true
         loading = true
-        error = false
+        // error deliberately NOT reset: a previous fetch failure stays
+        // visible until the next setFolders reports a result.
         level = 0
         folderIndex = 0
         sessionIndex = 0
@@ -295,12 +296,14 @@ class SessionPickerState {
     fun selectedFolder(): RemoteFolder? = folders.getOrNull(folderIndex)
 
     /**
-     * Level 0: descends to conversations, returns null. Level 1: returns the
-     * chosen target (session id null = new conversation). Does NOT close.
+     * Level 0: descends to conversations, returns null (no-op on empty
+     * folders). Level 1: returns the chosen target (session id null = new
+     * conversation). Does NOT close.
      */
     fun confirm(): SessionTarget? {
         if (!open) return null
         if (level == 0) {
+            if (folders.isEmpty()) return null
             level = 1
             sessionIndex = 0
             return null
