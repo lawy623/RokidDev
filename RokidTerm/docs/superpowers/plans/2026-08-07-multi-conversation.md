@@ -1971,10 +1971,13 @@ Add after `connectSelected` (before `reconnectActiveEndpoint`):
                 } else if (thenConnect) {
                     // Helper unavailable (not yet deployed / server error):
                     // preserve the pre-change behavior via the legacy launch.
+                    // (Fix round 2026-08-08: this branch MUST pass
+                    // useLegacy = true — the plan's original always-false
+                    // call would attach to an empty tmux shell.)
                     android.util.Log.w("RokidTerminal", "session switch failed; legacy launch")
                     bindScrollback(workspace, sessionId)
                     rememberTarget(workspace, sessionId)
-                    connectAfterSwitch(endpoint)
+                    connectAfterSwitch(endpoint, useLegacy = true)
                 } else {
                     android.widget.Toast.makeText(
                         this, "切换失败", android.widget.Toast.LENGTH_SHORT,
@@ -1985,14 +1988,14 @@ Add after `connectSelected` (before `reconnectActiveEndpoint`):
         }.start()
     }
 
-    private fun connectAfterSwitch(endpoint: EndpointProfile) {
+    private fun connectAfterSwitch(endpoint: EndpointProfile, useLegacy: Boolean = false) {
         val identity = try {
             DeviceKeyStore(this, endpoint.id).getOrCreate()
         } catch (error: Exception) {
             terminalView.setState("KEY ERROR: ${error.message}")
             return
         }
-        ssh.connect(endpoint, identity, legacy = false)
+        ssh.connect(endpoint, identity, legacy = useLegacy)
         asr.connect(endpoint)
     }
 
@@ -2120,7 +2123,687 @@ git commit -m "feat: connect-time picker, server switch execution, per-conversat
 
 ---
 
-### Task 10: Docs sync
+### Task 11: Picker keymap corrections + two parked one-liners
+
+User-corrected keymap (2026-08-07, after Task 8 shipped): TP **double-tap**
+cancels (not Back); COIDEA normal navigation is keys 2/5 ONLY (4/6 are
+reserved for the armed delete selector, Task 16). Also folds in two
+deferred minors from Task 9's review.
+
+**Files:**
+- Modify: `app/src/main/java/com/rokid/terminal/MainActivity.kt`
+
+- [ ] **Step 1: TP single/double arbitration in the picker**
+
+Currently `handleSessionPickerKey` confirms on primary-key DOWN instantly.
+Replace with the codebase's standard single/double window (mirrors
+`handlePrimaryKeyUp`'s pattern, self-contained in the picker):
+
+```kotlin
+    private var pickerPrimaryPending: Runnable? = null
+
+    private fun pickerPrimaryPressed() {
+        val pending = pickerPrimaryPending
+        if (pending != null) {
+            // Double-tap: cancel (user contract: TP double = cancel).
+            mainHandler.removeCallbacks(pending)
+            pickerPrimaryPending = null
+            sessionPickerCancel()
+        } else {
+            val single = Runnable {
+                pickerPrimaryPending = null
+                sessionPickerConfirm()
+            }
+            pickerPrimaryPending = single
+            mainHandler.postDelayed(single, ViewConfiguration.getDoubleTapTimeout().toLong())
+        }
+    }
+```
+
+In `handleSessionPickerKey`, replace the confirm branch:
+
+```kotlin
+        KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_8 -> {
+            // TP/ring single = confirm after the double-tap window; a second
+            // press within the window = cancel (user contract 2026-08-07).
+            // The ring's touchpad double arrives as KEYCODE_DEL (firmware),
+            // so its ENTER never double-fires — the window only affects TP.
+            if (event.repeatCount == 0) pickerPrimaryPressed()
+            true
+        }
+```
+
+Note: `sessionPickerCancel` must clear `pickerPrimaryPending` (add
+`pickerPrimaryPending?.let(mainHandler::removeCallbacks); pickerPrimaryPending = null`
+at its top), and `openSessionPicker`/`sessionPickerConfirm` must also clear
+it (`clearPrimaryGesture()` already runs in openSessionPicker; add the
+clear to `sessionPickerConfirm` and `sessionPickerCancel`).
+
+- [ ] **Step 2: COIDEA navigation 2/5 only**
+
+In `handleSessionPickerKey`, the navigation branch currently maps
+2/5/4/6. Change it to 2/5 only:
+
+```kotlin
+        KeyEvent.KEYCODE_2, KeyEvent.KEYCODE_5 -> {
+            if (event.repeatCount == 0) {
+                sessionPickerMove(if (keyCode == KeyEvent.KEYCODE_2) -1 else 1)
+            }
+            true
+        }
+```
+
+(4/6 fall through to `else -> true`, consumed — they are reserved for the
+armed delete selector in Task 16.)
+
+- [ ] **Step 3: Back stays a secondary cancel**
+
+Keep `KeyEvent.KEYCODE_BACK` in the cancel branch (double-tap is the
+primary TP cancel; Back remains a harmless fallback).
+
+- [ ] **Step 4: Fold in the two Task 9 deferred minors**
+
+1. `onDestroy`: add `mainHandler.removeCallbacks(sessionSyncRunnable)` next
+   to the existing `removeCallbacks(keyboardPoll)`.
+2. `pollSessionSync`: re-read `scrollbackFolderKey`/`scrollbackSessionId`
+   INSIDE `runOnUiThread` instead of using the values captured before the
+   fetch (fast double-switch race):
+
+```kotlin
+    private fun pollSessionSync() {
+        val fetcher = sessionFetcher ?: return
+        val endpoint = activeEndpoint ?: return
+        if (sshState != "CONNECTED" || sessionPicker.open) return
+        Thread {
+            val status = fetcher.status(endpoint.sessionName)
+            runOnUiThread {
+                if (status == null || status.cwd == null) return@runOnUiThread
+                val folderKey = scrollbackFolderKey ?: return@runOnUiThread
+                val sessionId = scrollbackSessionId ?: return@runOnUiThread
+                val newFolderKey = ServerSessionFetcher.encodeDir(status.cwd)
+                val folderChanged = newFolderKey != folderKey
+                val sessionChanged = status.sessionId != null && status.sessionId != sessionId
+                if (!folderChanged && !sessionChanged) return@runOnUiThread
+                persistScrollback()
+                scrollbackFolderKey = newFolderKey
+                scrollbackSessionId = status.sessionId ?: sessionId
+                val store = scrollbackStore
+                if (store != null) {
+                    terminalOutput.importScrollbackText(
+                        store.read(store.file(endpoint.id, newFolderKey, scrollbackSessionId!!)),
+                    )
+                }
+                sessionPicker.markCurrent(status.cwd, scrollbackSessionId)
+                android.widget.Toast.makeText(this, "已切换会话", android.widget.Toast.LENGTH_SHORT).show()
+            }
+        }.start()
+    }
+```
+
+- [ ] **Step 5: Build + full suite + commit**
+
+Run: `./gradlew assembleDebug testDebugUnitTest` — all pass, zero regressions.
+
+```bash
+git add app/src/main/java/com/rokid/terminal/MainActivity.kt
+git commit -m "fix: picker TP double-tap cancel, COIDEA 2/5 nav, watcher cleanup"
+```
+
+### Task 12: Server helper `delete` verb
+
+**Files:**
+- Modify: `server/rokid-sessions`
+
+**Interfaces:**
+- Produces: `rokid-sessions delete <tmux-session> <base-dir> <dir> <session-id>` → `ok\t<encoded-dir>\t<session-id>` or `error\t<message>`.
+
+- [ ] **Step 1: Implement the verb**
+
+Add to `main()`:
+
+```bash
+    delete)
+      [ $# -ge 5 ] || { echo "error\tusage: delete <tmux-session> <base-dir> <real-dir> <session-id>"; return 1; }
+      cmd_delete "$2" "$3" "$4" "$5"
+      ;;
+```
+
+Add `cmd_delete` (reuses the same validation discipline as `cmd_switch`;
+refuses the ACTIVE session — the running Claude's current conversation):
+
+```bash
+cmd_delete() {
+  local session="$1" base="$2" dir="$3" id="$4"
+  case "$id" in
+    *[!A-Za-z0-9_-]*) echo "error\tbad session id"; return 1 ;;
+  esac
+  local base_resolved dir_resolved
+  base_resolved="$(cd "$base" 2>/dev/null && pwd -P)" || { echo "error\tbase not accessible"; return 1; }
+  dir_resolved="$(cd "$dir" 2>/dev/null && pwd -P)" || { echo "error\tpath not accessible"; return 1; }
+  if [ "$dir_resolved" = "$base_resolved" ] ||
+     [ "${dir_resolved#"$base_resolved"/}" != "$dir_resolved" ]; then
+    : # ok
+  else
+    echo "error\tpath outside base"; return 1
+  fi
+  local enc target
+  enc="$(encode "$dir_resolved")"
+  target="$PROJECTS_DIR/$enc/$id.jsonl"
+  # Refuse the running conversation (defense in depth; the app also blocks ▶).
+  local pane_pid claude_pid cwd newest
+  pane_pid="$(tmux list-panes -t "$session" -F '#{pane_pid}' 2>/dev/null | head -1)"
+  if [ -n "$pane_pid" ]; then
+    claude_pid="$(first_claude_descendant "$pane_pid")"
+    if [ -n "$claude_pid" ]; then
+      cwd="$(readlink -f "/proc/$claude_pid/cwd" 2>/dev/null || true)"
+      if [ "$cwd" = "$dir_resolved" ]; then
+        newest="$(newest_session_id "$enc")"
+        if [ "$newest" = "$id" ]; then
+          echo "error\tactive session"
+          return 1
+        fi
+      fi
+    fi
+  fi
+  [ -f "$target" ] || { echo "error\tnot found"; return 1; }
+  rm -f "$target" || { echo "error\tdelete failed"; return 1; }
+  printf 'ok\t%s\t%s\n' "$enc" "$id"
+}
+```
+
+- [ ] **Step 2: Syntax + fixture checks**
+
+`bash -n server/rokid-sessions` — clean. Fixture (reuse the Task 5 encoded
+fixture): create a session JSONL for a NON-active id, `delete` it → `ok`
+and the file is gone; delete again → `error\tnot found`; delete with a bad
+id → `error\tbad session id`; delete a path outside the base → `error\tpath
+outside base`.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add server/rokid-sessions
+git commit -m "feat: rokid-sessions delete verb"
+```
+
+### Task 13: ServerSessionFetcher.deleteConversation
+
+**Files:**
+- Modify: `app/src/main/java/com/rokid/terminal/ServerSessionFetcher.kt`
+
+- [ ] **Step 1: Add the method**
+
+```kotlin
+    /** Deletes a conversation's transcript on the server (irrecoverable). */
+    fun deleteConversation(
+        tmuxSession: String,
+        baseDir: String,
+        folderPath: String,
+        sessionId: String,
+    ): String? = run(
+        "$HELPER delete ${shellQuote(tmuxSession)} ${shellQuote(baseDir)} " +
+            "${shellQuote(folderPath)} ${shellQuote(sessionId)}",
+    )
+```
+
+(Reuses `parseSwitchResult` — the delete verb prints the same ok/error
+format. No new parser logic; no new tests needed beyond the existing
+parser suite, which already covers the format.)
+
+- [ ] **Step 2: Build + full suite + commit**
+
+Run: `./gradlew assembleDebug testDebugUnitTest` — all pass.
+
+```bash
+git add app/src/main/java/com/rokid/terminal/ServerSessionFetcher.kt
+git commit -m "feat: server session delete call"
+```
+
+### Task 14: SessionPickerState delete-arm state
+
+**Files:**
+- Modify: `app/src/main/java/com/rokid/terminal/SessionPickerState.kt`
+- Test: `app/src/test/java/com/rokid/terminal/SessionPickerStateTest.kt` (append)
+
+**Interfaces:**
+- Produces: `deleteArmed: Boolean`, `deleteOption: Int` (0=取消, 1=删除),
+  `armDelete(): Boolean`, `disarmDelete()`, `moveDeleteOption(delta: Int)`,
+  `confirmDeleteOption(): Boolean`, `removeCurrentSession()`.
+
+- [ ] **Step 1: Append the failing tests**
+
+```kotlin
+    @Test
+    fun armDeleteWorksOnSessionRowAndBlocksCurrent() {
+        val picker = SessionPickerState().apply {
+            open(null, "id-1")
+            setFolders(listOf(folderA), failed = false)
+        }
+        picker.confirm() // descend
+        picker.move(1)   // session "id-1" — the CURRENT one (▶)
+
+        assertFalse(picker.armDelete()) // current session is not deletable
+
+        picker.move(1)   // session "id-2"
+        assertTrue(picker.armDelete())
+        assertTrue(picker.deleteArmed)
+        assertEquals(0, picker.deleteOption) // default = cancel (safe)
+    }
+
+    @Test
+    fun armDeleteFailsOnNewConversationSlot() {
+        val picker = SessionPickerState().apply {
+            open(null, null)
+            setFolders(listOf(folderA), failed = false)
+        }
+        picker.confirm() // new-slot selected
+
+        assertFalse(picker.armDelete())
+        assertFalse(picker.deleteArmed)
+    }
+
+    @Test
+    fun moveDeleteOptionWrapsAndConfirmExecutesOnlyOnDelete() {
+        val picker = SessionPickerState().apply {
+            open(null, "id-1")
+            setFolders(listOf(folderA), failed = false)
+        }
+        picker.confirm()
+        picker.move(2) // "id-2"
+        picker.armDelete()
+
+        assertFalse(picker.confirmDeleteOption()) // on 取消 → caller disarms
+        picker.moveDeleteOption(1)
+        assertTrue(picker.confirmDeleteOption())  // on 删除 → caller deletes
+        picker.moveDeleteOption(1)                // wraps back to 取消
+        assertFalse(picker.confirmDeleteOption())
+    }
+
+    @Test
+    fun armedStateBlocksNormalNavigation() {
+        val picker = SessionPickerState().apply {
+            open(null, "id-1")
+            setFolders(listOf(folderA), failed = false)
+        }
+        picker.confirm()
+        picker.move(2)
+        picker.armDelete()
+
+        val level = picker.level
+        val index = picker.sessionIndex
+        picker.move(1)
+        assertEquals(level, picker.level)
+        assertEquals(index, picker.sessionIndex)
+    }
+
+    @Test
+    fun removeCurrentSessionClampsSelectionAndDisarms() {
+        val picker = SessionPickerState().apply {
+            open(null, "id-1")
+            setFolders(listOf(folderA), failed = false)
+        }
+        picker.confirm()
+        picker.move(2)
+        picker.armDelete()
+
+        picker.removeCurrentSession()
+
+        assertFalse(picker.deleteArmed)
+        assertEquals(2, picker.conversationCount) // new-slot + id-1
+        assertEquals(1, picker.sessionIndex)      // clamped to last row
+    }
+```
+
+- [ ] **Step 2: Run to verify they fail**
+
+Run: `./gradlew testDebugUnitTest --tests "com.rokid.terminal.SessionPickerStateTest" -v`
+Expected: FAIL — members missing.
+
+- [ ] **Step 3: Implement**
+
+```kotlin
+    var deleteArmed: Boolean = false
+        private set
+    var deleteOption: Int = 0
+        private set
+
+    /**
+     * Arms the delete selector on the selected session row. False when the
+     * picker is closed, not on a session row, or the row IS the current
+     * conversation (▶) — the running conversation is never deletable.
+     */
+    fun armDelete(): Boolean {
+        if (!open || level != 1 || sessionIndex < 1) return false
+        val session = selectedFolder()?.sessions?.getOrNull(sessionIndex - 1) ?: return false
+        if (session.id == currentSessionId) return false
+        deleteArmed = true
+        deleteOption = 0 // default on 取消 (safe position)
+        return true
+    }
+
+    fun disarmDelete() {
+        deleteArmed = false
+        deleteOption = 0
+    }
+
+    /** Moves between 取消 (0) and 删除 (1) with wrap; no-op when not armed. */
+    fun moveDeleteOption(delta: Int) {
+        if (!deleteArmed) return
+        deleteOption = ((deleteOption + delta) % 2 + 2) % 2
+    }
+
+    /** True only when armed on 删除 — the caller executes the delete. */
+    fun confirmDeleteOption(): Boolean = deleteArmed && deleteOption == 1
+
+    /** Removes the selected session from the folder and clamps the selection. */
+    fun removeCurrentSession() {
+        val folder = selectedFolder() ?: return
+        val index = sessionIndex - 1
+        val updated = folder.sessions.filterIndexed { i, _ -> i != index }
+        folders = folders.map { if (it.encodedDir == folder.encodedDir) it.copy(sessions = updated) else it }
+        sessionIndex = sessionIndex.coerceAtMost(conversationCount - 1)
+        disarmDelete()
+    }
+```
+
+Also gate the normal navigation while armed — in `move()`, `confirm()`, and
+`back()`:
+
+```kotlin
+    fun move(delta: Int) {
+        if (!open || loading || deleteArmed) return
+        ...
+    }
+    fun back(): Boolean {
+        if (!open || deleteArmed || level != 1) return false
+        ...
+    }
+    fun confirm(): SessionTarget? {
+        if (!open || deleteArmed) return null
+        ...
+    }
+```
+
+- [ ] **Step 4: Run to verify they pass**
+
+Run: `./gradlew testDebugUnitTest --tests "com.rokid.terminal.SessionPickerStateTest" -v`
+Expected: PASS (14 tests).
+
+- [ ] **Step 5: Full suite + commit**
+
+Run: `./gradlew testDebugUnitTest` — all pass.
+
+```bash
+git add app/src/main/java/com/rokid/terminal/SessionPickerState.kt app/src/test/java/com/rokid/terminal/SessionPickerStateTest.kt
+git commit -m "feat: session picker delete-arm state"
+```
+
+### Task 15: TerminalView armed rendering
+
+**Files:**
+- Modify: `app/src/main/java/com/rokid/terminal/TerminalView.kt`
+
+- [ ] **Step 1: Extend the UI snapshot**
+
+Add two fields to `SessionPickerUi`:
+
+```kotlin
+data class SessionPickerUi(
+    val open: Boolean = false,
+    val loading: Boolean = false,
+    val error: Boolean = false,
+    val level: Int = 0,
+    val folders: List<RemoteFolder> = emptyList(),
+    val folderIndex: Int = 0,
+    val sessionIndex: Int = 0,
+    val currentFolderPath: String? = null,
+    val currentSessionId: String? = null,
+    val deleteArmed: Boolean = false,
+    val deleteOption: Int = 0,
+)
+```
+
+- [ ] **Step 2: Render the armed state**
+
+In `drawSessionPicker`, when `sessionPickerUi.deleteArmed && sessionPickerUi.level == 1`:
+
+1. The selected row text gets a `删除?` suffix before ellipsization
+   (`if (deleteArmed && itemIndex == selected) text = "$text 删除?"`).
+2. Replace the footer hint area with a two-option bar above the footer
+   line:
+
+```kotlin
+        if (sessionPickerUi.deleteArmed && sessionPickerUi.level == 1) {
+            paint.alpha = 255
+            paint.textSize = 16f
+            val cancelX = left + 12f
+            val deleteX = right - 12f - paint.measureText("删除")
+            val cancelText = if (sessionPickerUi.deleteOption == 0) "◀ 取消" else "取消"
+            val deleteText = if (sessionPickerUi.deleteOption == 1) "删除 ▶" else "删除"
+            if (sessionPickerUi.deleteOption == 0) {
+                paint.style = Paint.Style.FILL
+                paint.color = Color.GREEN
+                paint.alpha = 90
+                canvas.drawRect(left + 4f, bottom - 92f, right - 4f, bottom - 62f, paint)
+            } else {
+                paint.style = Paint.Style.FILL
+                paint.color = Color.GREEN
+                paint.alpha = 90
+                canvas.drawRect(left + 4f, bottom - 92f, right - 4f, bottom - 62f, paint)
+                paint.alpha = 90
+                canvas.drawRect(right / 2f, bottom - 92f, right - 4f, bottom - 62f, paint)
+            }
+            paint.style = Paint.Style.FILL
+            paint.alpha = 255
+            canvas.drawText(cancelText, cancelX, bottom - 68f, paint)
+            canvas.drawText(deleteText, deleteX, bottom - 68f, paint)
+            paint.alpha = 175
+            paint.textSize = 11f
+            canvas.drawText("SWIPE SELECT   CONFIRM DELETE   CANCEL UNMARK", left + 12f, bottom - 36f, paint)
+        } else {
+            // existing hint block
+        }
+```
+
+(Simpler alternative if the two-rect version reads awkwardly: draw ONE
+highlight rect whose left/right halves depend on `deleteOption` — the
+intent is: the selected option is visibly highlighted, 取消 on the left,
+删除 on the right.)
+
+- [ ] **Step 3: Build + commit**
+
+Run: `./gradlew assembleDebug` — BUILD SUCCESSFUL.
+
+```bash
+git add app/src/main/java/com/rokid/terminal/TerminalView.kt
+git commit -m "feat: session picker delete-arm rendering"
+```
+
+### Task 16: MainActivity delete wiring
+
+**Files:**
+- Modify: `app/src/main/java/com/rokid/terminal/MainActivity.kt`
+
+- [ ] **Step 1: Arm triggers**
+
+In `handleSessionPickerKey`, add:
+
+```kotlin
+        KeyEvent.KEYCODE_HOME, KeyEvent.KEYCODE_MOVE_HOME -> {
+            // Ring touchpad long press: arm the delete selector.
+            if (event.repeatCount == 0) sessionPickerArmDelete()
+            true
+        }
+        KeyEvent.KEYCODE_3 -> {
+            // COIDEA spare key: arm the delete selector.
+            if (event.repeatCount == 0) sessionPickerArmDelete()
+            true
+        }
+```
+
+In `handleSystemKeyAction`, replace the Task 9 guard so the TP long-press
+broadcast arms the delete selector:
+
+```kotlin
+    private fun handleSystemKeyAction(action: Int) {
+        if (sessionPicker.open) {
+            // Strict isolation: only the long-press broadcast acts (delete
+            // selector arm); the Shutter broadcast is consumed.
+            if (action == ACTION_LONG_PRESS) sessionPickerArmDelete()
+            return
+        }
+        ...
+```
+
+- [ ] **Step 2: Armed-state key routing**
+
+In `handleSessionPickerKey`, when the picker is armed the navigation and
+confirm/cancel keys route to the delete selector instead of the list:
+
+```kotlin
+        KeyEvent.KEYCODE_2, KeyEvent.KEYCODE_5,
+        KeyEvent.KEYCODE_4, KeyEvent.KEYCODE_6 -> {
+            if (event.repeatCount == 0) {
+                if (sessionPicker.deleteArmed) {
+                    // Armed: COIDEA 4/6 (and 2/5) move the 取消/删除 selector.
+                    sessionPickerMoveDeleteOption(if (keyCode == KeyEvent.KEYCODE_4 || keyCode == KeyEvent.KEYCODE_2) -1 else 1)
+                } else if (keyCode == KeyEvent.KEYCODE_2 || keyCode == KeyEvent.KEYCODE_5) {
+                    sessionPickerMove(if (keyCode == KeyEvent.KEYCODE_2) -1 else 1)
+                }
+            }
+            true
+        }
+        KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN,
+        KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> {
+            if (event.repeatCount == 0) {
+                if (sessionPicker.deleteArmed) {
+                    // Armed: any swipe moves the selector (right/down = 删除).
+                    val ring = isRingEvent(event)
+                    val next = when {
+                        keyCode == KeyEvent.KEYCODE_DPAD_DOWN || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT -> true
+                        ring -> keyCode == KeyEvent.KEYCODE_DPAD_LEFT // ring right-swipe arrival
+                        else -> false
+                    }
+                    sessionPickerMoveDeleteOption(if (next) 1 else -1)
+                } else {
+                    sessionPickerMove(if (keyCode == KeyEvent.KEYCODE_DPAD_UP || keyCode == KeyEvent.KEYCODE_DPAD_LEFT) -1 else 1)
+                }
+            }
+            true
+        }
+```
+
+`sessionPickerConfirm` and `sessionPickerCancel` route through the armed
+state first (Task 11's `pickerPrimaryPressed` double-tap also lands here —
+its second press cancels, which disarms):
+
+```kotlin
+    private fun sessionPickerConfirm() {
+        if (!sessionPicker.open) return
+        if (sessionPicker.deleteArmed) {
+            if (sessionPicker.confirmDeleteOption()) {
+                val folder = sessionPicker.selectedFolder() ?: return
+                val session = folder.sessions.getOrNull(sessionPicker.sessionIndex - 1) ?: return
+                sessionPicker.disarmDelete()
+                sessionPickerSyncToView()
+                runDeleteConversation(folder.path, session.id)
+            } else {
+                sessionPicker.disarmDelete()
+                sessionPickerSyncToView()
+            }
+            return
+        }
+        val target = sessionPicker.confirm()
+        ...
+    }
+
+    private fun sessionPickerCancel() {
+        if (!sessionPicker.open) return
+        pickerPrimaryPending?.let(mainHandler::removeCallbacks)
+        pickerPrimaryPending = null
+        if (sessionPicker.deleteArmed) {
+            sessionPicker.disarmDelete()
+            sessionPickerSyncToView()
+            return
+        }
+        if (sessionPicker.back()) {
+            sessionPickerSyncToView()
+            return
+        }
+        ...
+    }
+```
+
+- [ ] **Step 3: runDeleteConversation + local file cleanup**
+
+```kotlin
+    private fun sessionPickerArmDelete() {
+        if (sessionPicker.armDelete()) sessionPickerSyncToView()
+    }
+
+    private fun sessionPickerMoveDeleteOption(delta: Int) {
+        sessionPicker.moveDeleteOption(delta)
+        sessionPickerSyncToView()
+    }
+
+    /** Deletes the transcript on the server + the local scrollback file. */
+    private fun runDeleteConversation(folderPath: String, sessionId: String) {
+        val endpoint = activeEndpoint ?: return
+        val fetcher = sessionFetcher ?: return
+        Thread {
+            val raw = fetcher.deleteConversation(endpoint.sessionName, endpoint.workspace, folderPath, sessionId)
+            val ok = raw != null && ServerSessionFetcher.parseSwitchResult(raw) != null
+            runOnUiThread {
+                if (ok) {
+                    sessionPicker.removeCurrentSession()
+                    val store = scrollbackStore
+                    if (store != null) {
+                        runCatching {
+                            store.file(endpoint.id, ServerSessionFetcher.encodeDir(folderPath), sessionId).delete()
+                        }
+                    }
+                    sessionPickerSyncToView()
+                    android.widget.Toast.makeText(this, "已删除会话", android.widget.Toast.LENGTH_SHORT).show()
+                } else {
+                    android.widget.Toast.makeText(this, "删除失败", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            }
+        }.start()
+    }
+```
+
+- [ ] **Step 4: sessionPickerSyncToView passes the armed state**
+
+```kotlin
+    private fun sessionPickerSyncToView() {
+        terminalView.setSessionPicker(
+            SessionPickerUi(
+                open = sessionPicker.open,
+                loading = sessionPicker.loading,
+                error = sessionPicker.error,
+                level = sessionPicker.level,
+                folders = sessionPicker.folders,
+                folderIndex = sessionPicker.folderIndex,
+                sessionIndex = sessionPicker.sessionIndex,
+                currentFolderPath = sessionPicker.currentFolderPath,
+                currentSessionId = sessionPicker.currentSessionId,
+                deleteArmed = sessionPicker.deleteArmed,
+                deleteOption = sessionPicker.deleteOption,
+            ),
+        )
+    }
+```
+
+- [ ] **Step 5: Build + full suite + commit**
+
+Run: `./gradlew assembleDebug testDebugUnitTest` — all pass, zero regressions.
+
+```bash
+git add app/src/main/java/com/rokid/terminal/MainActivity.kt
+git commit -m "feat: conversation delete via armed selector"
+```
+
+
 
 **Files:**
 - Modify: `RokidTerm/rules/composer.md` — palette contract: the `[切换对话]` local action item, `/resume`+`/continue` removal, and a pointer to the session-picker section.
@@ -2143,24 +2826,36 @@ In the "Implemented: local command palette (2026-08-06)" section, extend the lis
 
 - [ ] **Step 2: Update rules/input.md**
 
-Add a Part 4 section (conversation picker):
+Add a Part 4 section (conversation picker) with the user-corrected keymap
+(2026-08-07): TP double-tap cancels (NOT Back); COIDEA normal navigation is
+keys 2/5 only (4/6 reserved for the armed delete selector):
 
 ```markdown
 ### Part 4: Conversation picker (2026-08-08)
 
 Local two-level picker (folders → conversations) opened at connect time or
 from the palette's `[切换对话]` action. Strict isolation: while open, only
-navigate/confirm/cancel act; everything else is consumed.
+navigate/confirm/cancel act; everything else is consumed (incl. the
+long-press/Shutter broadcasts — Shutter is a no-op; the TP long-press
+broadcast arms the delete selector).
 
 | Device | Navigate | Confirm | Cancel |
 |---|---|---|---|
-| Rokid TP | swipe up/down (left/right = up/down) | single click | Back |
-| COIDEA KM | keys 2/5/4/6 (4/6 = up/down too) | left knob (8) | right knob (D) |
+| Rokid TP | swipe up/down (left/right = up/down) | single click (after the double-tap window) | double click |
+| COIDEA KM | keys 2/5 | left knob (8) | right knob (D) |
 | INMO Ring4 | swipe (right-swipe arrival = next) | touchpad single | GO double |
 
-GO double cancels via the same F8 arbitration as Part 3; GO long and single
-are blocked. Back at level 1 steps up to folders; Back at level 0 closes the
-picker (connect-time: returns to the endpoint list).
+Back remains a secondary cancel fallback on the glasses. GO double cancels
+via the same F8 arbitration as Part 3; GO long and single are blocked. Back
+at level 1 steps up to folders; Back at level 0 closes the picker
+(connect-time: returns to the endpoint list).
+
+Delete selector (armed by long-press on a session row — TP long-press
+broadcast / Ring touchpad long / COIDEA key 3): a two-option bar
+`取消 | 删除` appears with 取消 selected by default; swipes (or COIDEA
+4/6) move between the options; confirm on 删除 deletes the transcript on
+the server + the local scrollback file (irrecoverable); confirm on 取消 or
+any cancel key disarms. The current conversation (▶) can never be armed.
 ```
 
 - [ ] **Step 3: Update rules/rendering.md**
@@ -2179,7 +2874,15 @@ Extend the scrollback persistence bullet:
 
 - [ ] **Step 4: Update CLAUDE.md**
 
-In the "Verified 2026-08-06" scrollback bullet, replace the final sentence "Files are keyed per endpoint today; when session-resume lands, key them per Claude session/conversation instead." with "Files are now keyed per conversation (2026-08-08); see Open/pending." Add an Implemented 2026-08-08 section (conversation picker, server helper, per-conversation keying, sync watcher) and move the session-resume item in Open/pending to "implemented — see design + plan docs".
+In the "Verified 2026-08-06" scrollback bullet, replace the final sentence "Files are keyed per endpoint today; when session-resume lands, key them per Claude session/conversation instead." with "Files are now keyed per conversation (2026-08-08); see Open/pending." Add an Implemented 2026-08-08 section (conversation picker, server helper, per-conversation keying, sync watcher, conversation deletion via the armed selector, TP double-tap cancel) and move the session-resume item in Open/pending to "implemented — see design + plan docs". Add a new Open/pending item:
+
+```markdown
+- **Claude interactive panels with input fields** — panels that combine a
+  list with a text input (e.g. the option panels Claude Code shows for
+  choosing an implementation approach) are NOT yet handled; not observed in
+  real use as of 2026-08-07. Design the interaction (list nav + input
+  focus) only after a real case is captured.
+```
 
 - [ ] **Step 5: Commit**
 
