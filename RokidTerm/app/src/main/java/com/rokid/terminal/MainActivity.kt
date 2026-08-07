@@ -1883,6 +1883,11 @@ class MainActivity : Activity() {
                     bindScrollback(folderPath, sessionId)
                     rememberTarget(folderPath, sessionId)
                     sessionPicker.markCurrent(folderPath, sessionId)
+                    // A freshly created conversation appears in the cached
+                    // list immediately — the server JSONL is only written on
+                    // the first message, so without this the new chat would
+                    // stay invisible in the picker (user 2026-08-08).
+                    if (isNew) rememberNewSessionInCache(folderPath, sessionId)
                     // Resumed conversations get their FULL transcript pulled
                     // into the local scrollback (the server replay is a
                     // redraw, not a scroll, so nothing is captured locally —
@@ -1937,6 +1942,24 @@ class MainActivity : Activity() {
                 }
             }
         }.start()
+    }
+
+    /**
+     * Adds a freshly created conversation to the cached folder list with a
+     * "New chat" placeholder title, so the next picker open shows it
+     * instantly. The background refresh replaces the placeholder with the
+     * real first-message title once the server JSONL exists (2026-08-08).
+     */
+    private fun rememberNewSessionInCache(folderPath: String, sessionId: String) {
+        val cached = cachedFolders ?: return
+        val now = System.currentTimeMillis()
+        cachedFolders = cached.map { folder ->
+            if (folder.path == folderPath && folder.sessions.none { it.id == sessionId }) {
+                folder.copy(sessions = listOf(RemoteSession(sessionId, "New chat", now)) + folder.sessions)
+            } else {
+                folder
+            }
+        }
     }
 
     /**
