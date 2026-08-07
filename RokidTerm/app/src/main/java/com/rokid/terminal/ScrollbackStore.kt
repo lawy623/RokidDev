@@ -15,7 +15,7 @@ class ScrollbackStore(private val filesDir: File) {
     fun file(endpointId: String, folderKey: String, sessionId: String): File =
         File(filesDir, "scrollback_${sanitize(endpointId)}_${sanitize(folderKey)}_${sanitize(sessionId)}.txt")
 
-    /** Pre-conversation per-endpoint file (created by builds before 2026-08-08). */
+    /** Pre-conversation per-endpoint file (created by builds before 2026-08-07). */
     fun legacyFile(endpointId: String): File =
         File(filesDir, "scrollback_${sanitize(endpointId)}.txt")
 

@@ -128,7 +128,7 @@ The phone-side app handles: device binding (QR code-based WiFi provisioning), re
 ## Practical Development Lessons (from Flappy Bird project)
 
 > 输入/按键/触摸板真机经验汇总：`.docs/ROKID_INPUT_INTERACTIONS.md`
-> （共享参考，含 2026-08-08 快滑配对实测）；RokidTerm 项目级交互合同在
+> （共享参考，含 2026-08-07 快滑配对实测）；RokidTerm 项目级交互合同在
 > `RokidTerm/rules/input.md`（Part 1-4，含对话选择器键位）。
 
 ### Build & Deploy Pipeline (macOS)
@@ -160,7 +160,7 @@ The APK persists on the device after install. Once installed, the app appears in
 - If `adb devices` shows empty even though the device appears in ioreg: run `adb kill-server && adb start-server && adb devices`
 - USB debugging must be enabled on the glasses (Settings → Developer options). If "Developer options" is hidden, tap the build number 7 times in Settings → About
 
-### SSH / Networking (hardware-verified 2026-08-08, via RokidTerm)
+### SSH / Networking (hardware-verified 2026-08-07, via RokidTerm)
 
 - **JSch exec channels never deliver EOF on this firmware.** The remote
   command exits 0 and its output arrives through `available()`/`read()`,

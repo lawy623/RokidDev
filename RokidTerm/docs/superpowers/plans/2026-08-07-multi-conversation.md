@@ -500,7 +500,7 @@ class ServerSessionFetcher(
      * Takes the keystore, NOT an identity: this fetcher is called repeatedly
      * per connection (list, status every 30 s, switch), and a shared identity
      * would be zeroed by the first call's fill(0). A fresh identity is
-     * decrypted per run and cleared after import (2026-08-08, review fix).
+     * decrypted per run and cleared after import (2026-08-07, review fix).
      */
     private fun run(command: String, timeoutMs: Int = FETCH_TIMEOUT_MS): String? {
         var session: Session? = null
@@ -757,7 +757,7 @@ class ScrollbackStore(private val filesDir: File) {
     fun file(endpointId: String, folderKey: String, sessionId: String): File =
         File(filesDir, "scrollback_${sanitize(endpointId)}_${sanitize(folderKey)}_${sanitize(sessionId)}.txt")
 
-    /** Pre-conversation per-endpoint file (created by builds before 2026-08-08). */
+    /** Pre-conversation per-endpoint file (created by builds before 2026-08-07). */
     fun legacyFile(endpointId: String): File =
         File(filesDir, "scrollback_${sanitize(endpointId)}.txt")
 
@@ -878,7 +878,7 @@ In `MainActivity.kt`:
          * Full known built-in command set (server `claude` list + commands
          * verified in real use, 2026-08-06). The display list is built via
          * CommandPaletteState.displayList (bare "/" and the session-picker
-         * action lead). `/resume` and `/continue` were removed 2026-08-08:
+         * action lead). `/resume` and `/continue` were removed 2026-08-07:
          * the local conversation picker supersedes them. The server helper
          * adds custom commands/skills when reachable; the UI never claims
          * completeness.
@@ -1315,7 +1315,7 @@ class EndpointProfileTest {
     @Test
     fun `legacy remote command launches claude in the workspace`() {
         // Full-string assertEquals locks byte-identity with the pre-
-        // multi-conversation remoteCommand (fix round 1, 2026-08-08).
+        // multi-conversation remoteCommand (fix round 1, 2026-08-07).
         assertEquals(
             "(tmux has-session -t cloud-claude 2>/dev/null || " +
                 "tmux new-session -d -s cloud-claude -c '/srv/projects/my World' " +
@@ -1640,7 +1640,7 @@ In `onKeyUp` (line ~376), insert the picker guard FIRST (mirrors the F8-first st
 ```kotlin
     override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
         // The picker consumes every key-up; GO still arbitrates so its
-        // double press can cancel the picker (2026-08-08).
+        // double press can cancel the picker (2026-08-07).
         if (sessionPicker.open) {
             if (isRingKey(event) && keyCode == KeyEvent.KEYCODE_F8) handleGoKey(event)
             return true
@@ -1971,7 +1971,7 @@ Add after `connectSelected` (before `reconnectActiveEndpoint`):
                 } else if (thenConnect) {
                     // Helper unavailable (not yet deployed / server error):
                     // preserve the pre-change behavior via the legacy launch.
-                    // (Fix round 2026-08-08: this branch MUST pass
+                    // (Fix round 2026-08-07: this branch MUST pass
                     // useLegacy = true — the plan's original always-false
                     // call would attach to an empty tmux shell.)
                     android.util.Log.w("RokidTerminal", "session switch failed; legacy launch")
@@ -2270,7 +2270,7 @@ Add to `main()`:
 
 Add `cmd_delete` (reuses the same validation discipline as `cmd_switch`;
 refuses the ACTIVE session — the running Claude's current conversation).
-NOTE (fix round 2026-08-08): the cwd lookups in cmd_status/cmd_switch/
+NOTE (fix round 2026-08-07): the cwd lookups in cmd_status/cmd_switch/
 cmd_delete use a shared `pid_cwd` helper (readlink `/proc/<pid>/cwd`
 first — Linux unchanged — with an `lsof` fallback for platforms without
 /proc, which kept the active-session refusal dead on macOS):
@@ -2667,7 +2667,7 @@ broadcast arms the delete selector:
 
 In `handleSessionPickerKey`, when the picker is armed the navigation and
 confirm/cancel keys route to the delete selector instead of the list.
-NOTE (fix round 2026-08-08): the DPAD branch must keep the ring inversion
+NOTE (fix round 2026-08-07): the DPAD branch must keep the ring inversion
 EXACTLY as in Task 11 — the first draft of this step dropped it and
 reversed every ring horizontal swipe in the unarmed picker; and the armed
 `when` must check `ring` BEFORE the plain RIGHT clause or the ring can
@@ -2752,7 +2752,7 @@ its second press cancels, which disarms):
 
 - [ ] **Step 3: runDeleteConversation + local file cleanup**
 
-NOTE (fix round 2026-08-08): the ok-branch must remove by the CONFIRMED
+NOTE (fix round 2026-08-07): the ok-branch must remove by the CONFIRMED
 identity (`removeSession(folderPath, sessionId)`), NOT the live cursor —
 the first draft removed by cursor and could delete the wrong row if the
 user navigated during the ≤15 s round trip. `removeSession` lives on
@@ -2835,7 +2835,7 @@ git commit -m "feat: conversation delete via armed selector"
 - Modify: `RokidTerm/rules/composer.md` — palette contract: the `[Switch Chat]` local action item, `/resume`+`/continue` removal, and a pointer to the session-picker section.
 - Modify: `RokidTerm/rules/input.md` — conversation-picker key contract (Part 4 table: navigate/confirm/cancel per device, strict isolation, GO double cancel via arbitration).
 - Modify: `RokidTerm/rules/rendering.md` — scrollback persistence keyed per conversation; file layout; 30-file LRU; sync watcher.
-- Modify: `RokidTerm/CLAUDE.md` — Implemented section (2026-08-08), Open/pending: mark session-resume in progress with the design/plan links, and the per-conversation keying note; update the "keyed per endpoint today" sentence in the scrollback bullet.
+- Modify: `RokidTerm/CLAUDE.md` — Implemented section (2026-08-07), Open/pending: mark session-resume in progress with the design/plan links, and the per-conversation keying note; update the "keyed per endpoint today" sentence in the scrollback bullet.
 
 - [ ] **Step 1: Update rules/composer.md**
 
@@ -2845,7 +2845,7 @@ In the "Implemented: local command palette (2026-08-06)" section, extend the lis
 - A local action item `[Switch Chat]` sits directly after the bare `/`
   (selecting it opens the conversation picker instead of inserting text;
   contract in `input.md` Part 4). `/resume` and `/continue` were removed
-  from the defaults 2026-08-08 — the local picker supersedes them; typed or
+  from the defaults 2026-08-07 — the local picker supersedes them; typed or
   speech `/resume` still passes through, and the sync watcher re-binds local
   history when the session changes.
 ```
@@ -2857,7 +2857,7 @@ Add a Part 4 section (conversation picker) with the user-corrected keymap
 keys 2/5 only (4/6 reserved for the armed delete selector):
 
 ```markdown
-### Part 4: Conversation picker (2026-08-08)
+### Part 4: Conversation picker (2026-08-07)
 
 Local two-level picker (folders → conversations) opened at connect time or
 from the palette's `[Switch Chat]` action. Strict isolation: while open, only
@@ -2889,7 +2889,7 @@ any cancel key disarms. The current conversation (▶) can never be armed.
 Extend the scrollback persistence bullet:
 
 ```markdown
-- Scrollback persistence is keyed per CONVERSATION (2026-08-08): files are
+- Scrollback persistence is keyed per CONVERSATION (2026-08-07): files are
   `scrollback_<endpointId>_<folderKey>_<sessionId>.txt` (folderKey = the
   server's encoded project dir; sessionId = the Claude session uuid — the
   app supplies it for new conversations via `--session-id`). Bounded at
@@ -2900,7 +2900,7 @@ Extend the scrollback persistence bullet:
 
 - [ ] **Step 4: Update CLAUDE.md**
 
-In the "Verified 2026-08-06" scrollback bullet, replace the final sentence "Files are keyed per endpoint today; when session-resume lands, key them per Claude session/conversation instead." with "Files are now keyed per conversation (2026-08-08); see Open/pending." Add an Implemented 2026-08-08 section (conversation picker, server helper, per-conversation keying, sync watcher, conversation deletion via the armed selector, TP double-tap cancel) and move the session-resume item in Open/pending to "implemented — see design + plan docs". Add a new Open/pending item:
+In the "Verified 2026-08-06" scrollback bullet, replace the final sentence "Files are keyed per endpoint today; when session-resume lands, key them per Claude session/conversation instead." with "Files are now keyed per conversation (2026-08-07); see Open/pending." Add an Implemented 2026-08-07 section (conversation picker, server helper, per-conversation keying, sync watcher, conversation deletion via the armed selector, TP double-tap cancel) and move the session-resume item in Open/pending to "implemented — see design + plan docs". Add a new Open/pending item:
 
 ```markdown
 - **Claude interactive panels with input fields** — panels that combine a
@@ -2934,7 +2934,7 @@ Run `./dev.sh build && ./dev.sh run`, then:
 9. **Failure path**: temporarily rename the helper on the server → connect falls back to legacy launch (new conversation in workspace).
 10. **Privacy**: `adb logcat -s RokidTerminal` shows no titles/session IDs/conversation content.
 
-## Self-review notes (2026-08-08)
+## Self-review notes (2026-08-07)
 
 - Spec §3.1 protocol matches Tasks 2+5 verb-for-verb (`list <base>`/`status <session>`/`switch <session> <base> <dir> <resume:id|new:uuid>`, `F`/`S`/`pid`/`ok`/`error` lines).
 - Spec §3.2 entry points: connect picker (Task 9 connectSelected), palette `[Switch Chat]` (Task 8 Step 4), folder level from the filesystem (Task 5 `list_base`), `baseDir` = `workspace` (Global Constraints).

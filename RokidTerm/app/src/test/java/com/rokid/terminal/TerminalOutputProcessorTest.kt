@@ -72,7 +72,7 @@ class TerminalOutputProcessorTest {
         assertEquals(1, oldest.scrollbackRows)
         assertFalse(oldest.cursor.visible)
         // Browsing = scrollback + live screen appended below (the trimmed
-        // import never duplicates the screen's turns — 2026-08-08).
+        // import never duplicates the screen's turns — 2026-08-07).
         assertEquals("1111", rowText(oldest, 0))
         assertEquals("2222", rowText(oldest, 1))
         assertEquals("3333", rowText(oldest, 2))
@@ -186,7 +186,7 @@ class TerminalOutputProcessorTest {
         // Conversation switches must not leak the previous conversation's
         // rows: clearScrollback empties the in-memory history unconditionally
         // (importScrollbackText alone is a no-op for empty rows or while the
-        // alternate screen is active — regression 2026-08-08).
+        // alternate screen is active — regression 2026-08-07).
         val processor = TerminalOutputProcessor(columns = 4, rows = 3)
         processor.importScrollbackText(listOf("1111", "2222", "3333"))
         processor.scrollOlder(rows = 99)

@@ -192,7 +192,7 @@ conversation is preserved; only the running tool call is lost).
 - User 2026-08-07: two layers; pick at connect; in-session via palette (no new
   keys); server+local sync guaranteed → §3.
 
-## 8. Final implementation notes (2026-08-08, hardware-verified)
+## 8. Final implementation notes (2026-08-07, hardware-verified)
 
 The design was implemented and verified on the real glasses + Tencent Cloud
 server. Deviations and additions discovered during implementation:

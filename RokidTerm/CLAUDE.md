@@ -156,7 +156,7 @@ Verified on the current glasses and Tencent Cloud server:
   exchanges, ~55 KB/endpoint) and is overwritten each session — it never
   accumulates. In-memory browsing keeps the full 5000-row cap. Live
   screen content still comes from the tmux attach redraw — only the
-  scrollback is persisted. Files are now keyed per conversation (2026-08-08); see Open/pending.
+  scrollback is persisted. Files are now keyed per conversation (2026-08-07); see Open/pending.
 - SGR background colors parsed and rendered as light fills (Claude Code
   user-message blocks separated from output).
 - Terminal-mode Shutter swapped (2026-08-06): single = return to bottom
@@ -194,7 +194,7 @@ Verified on the current glasses and Tencent Cloud server:
   fetched once per connection from the server helper (file enumeration of
   Claude command/skill dirs), local built-in defaults as fallback.
 
-### Implemented 2026-08-08
+### Implemented 2026-08-07
 
 - Conversation picker at connect time and in-session via the palette's
   `[Switch Chat]` action (two-level: folders → conversations; contract in
@@ -214,20 +214,20 @@ Verified on the current glasses and Tencent Cloud server:
   fetch takes seconds on this network — the picker shows the last fetched
   list instantly; stale folders are safe because the server `switch` verb
   re-validates the target dir).
-- Input history is per-conversation (2026-08-08): each conversation owns its
+- Input history is per-conversation (2026-08-07): each conversation owns its
   own draft cache file `input_history_<folderKey>_<sessionId>.txt` (50
   entries); the legacy global `input_history.txt` was DISCARDED (user
   decision — test drafts only, no migration).
 - Picker fast-swipe pair dedup: the TP fast swipe emits DPAD PAIRS
   (LEFT+UP / RIGHT+DOWN) within a few ms; the picker dedups the same
   direction within 120 ms (same rule as panel mode), otherwise one swipe
-  moves two list items (user report 2026-08-08).
+  moves two list items (user report 2026-08-07).
 - Picker overlay is full-bleed OPAQUE below the top info bar. Hardware
   lesson: `drawRingIcon`/`drawKeyboardIcon` leave `paint.style = STROKE`,
   so a later fill rect drawn without an explicit `Paint.Style.FILL` renders
-  as a hollow outline — the "transparent picker" bug (2026-08-08).
+  as a hollow outline — the "transparent picker" bug (2026-08-07).
 
-### Hardware-verified 2026-08-08 (evening round — conversation lifecycle)
+### Hardware-verified 2026-08-07 (evening round — conversation lifecycle)
 
 - Session-id convergence: the app-generated UUID (via `--session-id`) may
   not match the server's real session file (the JSONL appears only on the
@@ -254,10 +254,22 @@ Verified on the current glasses and Tencent Cloud server:
 - Storage bounds: per-conversation input history (50 entries, 30-file LRU
   prune), scrollback (1000 rows/file, 30 files/endpoint), voice never on
   disk, debug traces ring-bounded 256 KB.
+- Double-ctrl+c exit protection: `sendCtrlC()` drops a second ctrl+c within
+  2 s, so Claude Code's double-ctrl+c session exit can never fire from the
+  glasses (user decision 2026-08-07; the desktop habit is not wanted here).
+  Applies to all four ctrl+c paths (COIDEA key 3, right-knob single, Shutter
+  double, GO long).
+- Command-panel auto-exit on reply (2026-08-07): the panel exits ~2 s after
+  Claude's reply renders — input line back to the bare `❯ ` prompt AND the
+  screen content above the input line changed from the panel-entry
+  fingerprint. Held while a numbered (vertical) picker is on screen:
+  `/usage`'s two-level pickers keep numbered rows with a bare prompt at the
+  bottom, which alone misfired the old signal (auto-exited mid-picker,
+  leaving the picker rendered).
 - Full implementation notes: `docs/superpowers/specs/2026-08-07-multi-
   conversation-design.md` §8.
 
-### Hardware-verified 2026-08-08 (real server + glasses)
+### Hardware-verified 2026-08-07 (real server + glasses)
 
 - The JSch exec channel on this firmware does NOT deliver EOF: the remote
   command exits 0 and its output arrives via `available()`/`read()`, but
@@ -277,14 +289,14 @@ Verified on the current glasses and Tencent Cloud server:
 
 ### Open / pending
 
-- **Session resume support** — implemented 2026-08-08 (conversation picker,
+- **Session resume support** — implemented 2026-08-07 (conversation picker,
   `rokid-sessions` helper, per-conversation scrollback keying, sync
   watcher); design doc: `.superpowers/sdd/2026-08-07-multi-conversation/`,
   plan docs in the same directory.
 - **Concurrent sessions (option B)** — each conversation gets its OWN tmux
   session + Claude process; switching re-attaches instead of
   kill+respawn, so a long-running task keeps executing while the user
-  works in another conversation (user decision 2026-08-08: implement after
+  works in another conversation (user decision 2026-08-07: implement after
   the current multi-conversation feature finishes device verification).
   Design notes: helper `switch` gains attach semantics, unique session
   names per conversation, local scrollback binding unchanged, cap

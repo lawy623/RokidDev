@@ -405,6 +405,25 @@ class TerminalView(context: Context) : View(context) {
         return if (numberedRows >= 2) PickerAxis.VERTICAL else PickerAxis.HORIZONTAL
     }
 
+    /**
+     * Fingerprint of the frame content ABOVE the input line — the panel
+     * auto-exit compares it across time to detect Claude's reply
+     * (2026-08-07). The tmux status line and the bypass banner sit below
+     * the input line and are excluded.
+     */
+    fun frameFingerprint(): String {
+        val frame = terminalFrame
+        if (frame == null || frame.cells.isEmpty()) return ""
+        val inputRow = findInputRow() ?: (frame.rows - 2)
+        val end = inputRow.coerceIn(0, frame.cells.size)
+        return buildString {
+            for (row in 0 until end) {
+                append(rowText(row))
+                append('\n')
+            }
+        }
+    }
+
     enum class PickerAxis { VERTICAL, HORIZONTAL }
 
     /**
@@ -833,7 +852,7 @@ class TerminalView(context: Context) : View(context) {
             paint.style = Paint.Style.FILL
             val text = if (paint.measureText(item) > rowWidth) item.take(12) + "…" else item
             val x = if (item == CommandPaletteState.SESSION_PICKER_ITEM) {
-                // Banner item: centered (user 2026-08-08).
+                // Banner item: centered (user 2026-08-07).
                 listLeft + (rowWidth - paint.measureText(text)) / 2f
             } else {
                 listLeft
@@ -866,7 +885,7 @@ class TerminalView(context: Context) : View(context) {
     }
 
     private fun drawSessionPicker(canvas: Canvas) {
-        // Full-bleed opaque cover below the top info bar (user 2026-08-08):
+        // Full-bleed opaque cover below the top info bar (user 2026-08-07):
         // the terminal footer and any live output must never bleed through
         // the modal.
         val left = 0f
@@ -876,7 +895,7 @@ class TerminalView(context: Context) : View(context) {
 
         // Explicit FILL: drawRingIcon/drawKeyboardIcon leave paint.style =
         // STROKE, so an implicit fill here silently draws nothing — the
-        // "transparent picker" bug (2026-08-08, ring connected).
+        // "transparent picker" bug (2026-08-07, ring connected).
         paint.style = Paint.Style.FILL
         paint.color = Color.BLACK
         paint.alpha = 255
@@ -980,7 +999,7 @@ class TerminalView(context: Context) : View(context) {
 
         if (sessionPickerUi.level == 1 && sessionPickerUi.deleteInFlight) {
             // Server-side delete round trip in flight: show DELETING… and
-            // lock input (user 2026-08-08).
+            // lock input (user 2026-08-07).
             paint.alpha = 255
             paint.textSize = 16f
             val msg = "DELETING…"
@@ -1003,7 +1022,7 @@ class TerminalView(context: Context) : View(context) {
             } else {
                 canvas.drawRect(midX, bottom - 92f, right - 4f, bottom - 62f, paint)
             }
-            // English labels (user 2026-08-08), no arrows, centered in each
+            // English labels (user 2026-08-07), no arrows, centered in each
             // half of the option bar.
             paint.style = Paint.Style.FILL
             paint.alpha = 255

@@ -16,7 +16,7 @@ encode() { printf '%s' "$1" | tr -c 'A-Za-z0-9' '-'; }
 # Handles BOTH transcript shapes: entries with a direct "content" field and
 # entries rewritten by compaction/summarization where the message lives
 # under "message"."content" (verified against real server transcripts
-# 2026-08-08). Slash-command entries are stored as
+# 2026-08-07). Slash-command entries are stored as
 # "<command-name>/x</command-name>..." — the title becomes the command
 # (with args when present). System-injected entries (isMeta) are skipped.
 first_user_title() {
@@ -330,7 +330,7 @@ out = []
 def emit_block(lines, prefix):
     # Trim the block's leading/trailing blank lines, then emit it separated
     # from the previous block by one blank row (layout: input and output
-    # blocks are visually distinct — user 2026-08-08).
+    # blocks are visually distinct — user 2026-08-07).
     while lines and not lines[0].strip():
         lines.pop(0)
     while lines and not lines[-1].strip():
@@ -378,7 +378,7 @@ with open(path, encoding="utf-8", errors="replace") as fh:
                 text = name.group(1).strip() + (" " + a if a else "")
             # <local-command-stdout> entries are the COMMAND'S OUTPUT, not a
             # user input — render them as plain output (no ❯ prefix, no
-            # dark fill; user report 2026-08-08). The wrapper tags are
+            # dark fill; user report 2026-08-07). The wrapper tags are
             # stripped for reading.
             is_command_output = "<local-command-stdout>" in text
             text = re.sub(r"</?local-command-stdout>", "", text)
@@ -387,7 +387,7 @@ with open(path, encoding="utf-8", errors="replace") as fh:
             # Rewritten (compacted) transcripts put assistant content under
             # "message"."content" too — without this the assistant replies
             # were dropped and history showed only user inputs (bug 2,
-            # 2026-08-08).
+            # 2026-08-07).
             c = e.get("content")
             if c is None:
                 m = e.get("message")

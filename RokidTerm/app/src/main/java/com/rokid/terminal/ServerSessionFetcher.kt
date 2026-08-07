@@ -94,7 +94,7 @@ class ServerSessionFetcher(
             channel.connect(5_000)
             val out = readAll(stdout, timeoutMs)
             // Diagnostic (length + exit only; never log helper content):
-            // on-device "empty list" investigation 2026-08-08.
+            // on-device "empty list" investigation 2026-08-07.
             android.util.Log.i(
                 "RokidTerminal",
                 "session helper: len=${out?.length ?: -1} " +
@@ -115,7 +115,7 @@ class ServerSessionFetcher(
      * JSch exec channel's EOF does NOT arrive (the remote command exits 0,
      * its output is delivered via available/read, but EOF never comes) — so
      * waiting for EOF alone burns the whole timeout, and discarding on
-     * timeout threw away real data (fixed 2026-08-08, on-device evidence:
+     * timeout threw away real data (fixed 2026-08-07, on-device evidence:
      * len=-1 exit=0). Return once the stream has been quiet for QUIET_MS.
      * Only transport exceptions yield null (handled in run()).
      */
@@ -137,7 +137,7 @@ class ServerSessionFetcher(
         }
         // toString(Charset) is API 33+ and missing on this Rokid firmware
         // (NoSuchMethodError — an Error, not an Exception, so it crashed the
-        // fetch thread; fixed 2026-08-08). Use the legacy overload.
+        // fetch thread; fixed 2026-08-07). Use the legacy overload.
         return bytes.toString("UTF-8")
     }
 
@@ -147,7 +147,7 @@ class ServerSessionFetcher(
          * `|| true` here — the app appends the verb AFTER this constant
          * (`$HELPER list ...`); a `|| true` in the middle swallows the verb
          * (the shell runs the helper with no args and `true` wins). Fixed
-         * 2026-08-08 after on-device discovery: every verb invocation
+         * 2026-08-07 after on-device discovery: every verb invocation
          * failed, so the picker only ever showed the /srv fallback.
          */
         const val HELPER = "/home/rokid/bin/rokid-sessions 2>/dev/null"

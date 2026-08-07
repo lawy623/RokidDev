@@ -205,7 +205,7 @@ adb logcat | rg 'RokidInput|InputReader|InputDispatcher|WindowManager'
 验证记录（2026-08-05）：拦截后 logcat 出现 `system key intercepted: long-press/shutter`，
 系统助手与相机零启动；长按在输入框内触发发送、快门触发删除。
 
-## 9. 实测：TP 快滑发出 DPAD 配对（2026-08-08，RokidTerminal 设备实测）
+## 9. 实测：TP 快滑发出 DPAD 配对（2026-08-07，RokidTerminal 设备实测）
 
 当前固件（`ROKID,PSOC-TP-R`）上，**快速滑动一次会同时发出两个 KeyEvent**（几毫秒内配对到达）：
 

@@ -5,7 +5,7 @@ import java.io.File
 
 /**
  * App-private local cache of sent composer drafts (input history), keyed per
- * CONVERSATION (user decision 2026-08-08: input history must not be shared
+ * CONVERSATION (user decision 2026-08-07: input history must not be shared
  * across conversations). The key is the conversation's folderKey/sessionId;
  * each key owns its own file `input_history_<key>.txt` (key == null uses the
  * legacy global file, which is never merged into per-conversation files).
@@ -132,7 +132,7 @@ class InputHistory(filesDir: File, key: String? = null) {
         /**
          * Deletes the oldest per-conversation input-history files beyond
          * MAX_FILES (same LRU bound as the scrollback files; user storage
-         * question 2026-08-08). Called alongside the scrollback prune.
+         * question 2026-08-07). Called alongside the scrollback prune.
          */
         fun prune(filesDir: File) {
             val files = filesDir.listFiles { f -> f.isFile && f.name.startsWith("input_history_") }

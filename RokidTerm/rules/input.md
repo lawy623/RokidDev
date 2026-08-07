@@ -305,9 +305,14 @@ all other keys (history, ctrl+c, shutter, TP single, composer, input
 history) are blocked until panel mode exits.
 
 Panel mode shows `COMMAND PANEL / NAV CONFIRM CANCEL` in the header.
-NO AUTO-EXIT (removed 2026-08-06 — the input-line signal proved unreliable
-with two-level pickers like `/usage`, exiting mid-interaction): panel mode
-ends only on explicit cancel (TP double / right knob / GO double / Back,
+AUTO-EXIT ON REPLY (2026-08-07): the panel exits once Claude's REPLY has
+rendered — the input line is back to the bare `❯ ` prompt (the picker's
+focus marker is gone) AND the screen content above the input line changed
+from the panel-entry fingerprint (2 s settle). While a numbered (vertical)
+picker is on screen the panel is HELD: `/usage`'s two-level pickers keep
+numbered rows mid-screen with a bare prompt at the bottom, so the
+bare-prompt signal alone misfired and auto-exited mid-picker (2026-08-07).
+Explicit cancel still works (TP double / right knob / GO double / Back,
 all ESC + exit). Opening the composer or reconnecting also exits panel
 mode.
 
@@ -369,7 +374,7 @@ double; else single). Ring swipe directions ARE corrected in the mapper
 (left gesture → older/left semantics) — real use showed the raw inverted
 keycodes were wrong (verified 2026-08-06).
 
-### Part 4: Conversation picker (2026-08-08)
+### Part 4: Conversation picker (2026-08-07)
 
 Local two-level picker (folders → conversations) opened at connect time or
 from the palette's `[Switch Chat]` action. Strict isolation: while open, only
@@ -388,7 +393,7 @@ via the same F8 arbitration as Part 3; GO long and single are blocked. Back
 at level 1 steps up to folders; Back at level 0 closes the picker
 (connect-time: returns to the endpoint list).
 
-**Swipe pair dedup (2026-08-08):** the TP fast swipe emits DPAD PAIRS
+**Swipe pair dedup (2026-08-07):** the TP fast swipe emits DPAD PAIRS
 (LEFT+UP / RIGHT+DOWN) within a few ms. The picker dedups the same
 direction within 120 ms (same rule as panel mode) — without it one swipe
 moved two list items. Slow swipes (continuous single events) still move
@@ -397,7 +402,7 @@ one item per swipe. Ring swipes are single events and are unaffected.
 Delete selector (armed by long-press on a session row — TP long-press
 broadcast / Ring touchpad long / COIDEA key 3): a two-option bar
 `Cancel | Delete` appears with Cancel selected by default (English labels
-per user 2026-08-08, centered, no arrows); swipes (or COIDEA 4/6) move
+per user 2026-08-07, centered, no arrows); swipes (or COIDEA 4/6) move
 between the options; confirm on Delete deletes the transcript on the server
 + the local scrollback file (irrecoverable); confirm on Cancel or any
 cancel key disarms. The current conversation (▶) can never be armed.

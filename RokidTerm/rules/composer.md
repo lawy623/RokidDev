@@ -166,7 +166,7 @@ fallback; the UI never claims completeness.
 - A local action item `[Switch Chat]` sits directly after the bare `/`
   (selecting it opens the conversation picker instead of inserting text;
   contract in `input.md` Part 4). `/resume` and `/continue` were removed
-  from the defaults 2026-08-08 — the local picker supersedes them; typed or
+  from the defaults 2026-08-07 — the local picker supersedes them; typed or
   speech `/resume` still passes through, and the sync watcher re-binds local
   history when the session changes.
 

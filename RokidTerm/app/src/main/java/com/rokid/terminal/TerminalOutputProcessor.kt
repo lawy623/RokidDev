@@ -29,7 +29,7 @@ class TerminalOutputProcessor(
      * Suppresses scroll capture for [durationMs] — called after a
      * conversation switch, because the resume replay scrolls the viewport
      * and would duplicate the imported transcript in the scrollback
-     * (2026-08-08). The screen still renders normally.
+     * (2026-08-07). The screen still renders normally.
      */
     @Synchronized
     fun suppressScrollCaptureFor(durationMs: Long) {
@@ -39,7 +39,7 @@ class TerminalOutputProcessor(
     /**
      * After the resume replay settles: drops the turns the live screen
      * already shows from the imported scrollback, so browsing (which appends
-     * the screen below the scrollback) never duplicates them (2026-08-08).
+     * the screen below the scrollback) never duplicates them (2026-08-07).
      */
     @Synchronized
     fun trimScrollbackToScreen() {
@@ -83,7 +83,7 @@ class TerminalOutputProcessor(
     /**
      * Replaces the scrollback even while the alternate screen is active —
      * rebuilding a resumed conversation's history from the server export
-     * (2026-08-08). Also returns the view to live (the new rows replace the
+     * (2026-08-07). Also returns the view to live (the new rows replace the
      * old ones; the user's offset would otherwise index stale rows).
      */
     @Synchronized
@@ -99,7 +99,7 @@ class TerminalOutputProcessor(
      * Unconditionally empties the in-memory scrollback (conversation
      * switches must not leak the previous conversation's rows; the import
      * alone is a no-op while the alternate screen is active or for empty
-     * files — fixed 2026-08-08).
+     * files — fixed 2026-08-07).
      */
     @Synchronized
     fun clearScrollback() {
@@ -125,7 +125,7 @@ class TerminalOutputProcessor(
         // Capture is ALSO suppressed for a window after a conversation switch:
         // the resume replay genuinely SCROLLS (the conversation exceeds the
         // viewport) and would otherwise duplicate the imported transcript
-        // (user report 2026-08-08 — 3 turns showed as 5).
+        // (user report 2026-08-07 — 3 turns showed as 5).
         if (altBefore && !captureSuppressed && now - lastConsumeNanos > quietRedrawNanos) {
             scrollBaseline = screen.snapshotRows()
         }

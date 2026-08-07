@@ -106,7 +106,7 @@ class SessionPickerState {
      * Moves the conversation-level selection to the slot at [index]
      * (0 = the new-chat slot, then sessions), clamped to the list.
      * Used by the live list refresh to preserve the user's position by
-     * session id (2026-08-08).
+     * session id (2026-08-07).
      */
     fun selectSession(index: Int) {
         if (!open || level != 1) return
@@ -117,7 +117,7 @@ class SessionPickerState {
      * Moves the conversation-level selection onto the CURRENT (▶) session
      * when it is in the selected folder; no-op (stays on the new-chat slot)
      * otherwise. In-session switching starts on the current conversation
-     * (user 2026-08-08); the connect flow keeps the new-chat default.
+     * (user 2026-08-07); the connect flow keeps the new-chat default.
      */
     fun selectCurrentSession() {
         if (!open || level != 1) return

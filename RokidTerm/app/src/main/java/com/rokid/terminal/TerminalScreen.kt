@@ -128,7 +128,7 @@ class TerminalScreen(
 
         // Browsing shows the scrollback rows ABOVE the live screen (the
         // screen is appended below, so scrolling up "pulls the full screen
-        // up" — user expectation 2026-08-08). No duplication: captured rows
+        // up" — user expectation 2026-08-07). No duplication: captured rows
         // are always above the screen, and imported transcripts are trimmed
         // to exclude the turns the screen already shows
         // (trimScrollbackToScreen).
@@ -153,7 +153,7 @@ class TerminalScreen(
      * spans from one ❯ row through the row before the next ❯ row). Called
      * after a resume replay settles: the imported transcript contains the
      * full conversation, and the turns the live screen shows must not be
-     * duplicated in the scrollback (2026-08-08).
+     * duplicated in the scrollback (2026-08-07).
      */
     fun trimScrollbackTurns(count: Int) {
         if (count <= 0 || scrollback.isEmpty()) return
@@ -229,7 +229,7 @@ class TerminalScreen(
      * Unconditionally empties the scrollback — unlike [importScrollbackText]
      * it is NOT a no-op for empty rows or while the alternate screen is
      * active. Conversation switching must clear the previous conversation's
-     * rows even when the import cannot apply (fixed 2026-08-08: browsing a
+     * rows even when the import cannot apply (fixed 2026-08-07: browsing a
      * new conversation showed the previous one's history).
      */
     fun clearScrollback() {
@@ -240,7 +240,7 @@ class TerminalScreen(
     /**
      * Replaces the scrollback even while the alternate screen is active —
      * for rebuilding a resumed conversation's history from the server
-     * transcript (2026-08-08). The live alt screen is untouched; the rows
+     * transcript (2026-08-07). The live alt screen is untouched; the rows
      * become browsable immediately (browsing shows the primary screen +
      * scrollback regardless of the active screen).
      */

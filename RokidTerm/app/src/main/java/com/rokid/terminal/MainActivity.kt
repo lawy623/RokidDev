@@ -75,12 +75,28 @@ class MainActivity : Activity() {
 
     /** True while a conversation switch is in flight — input is locked
      *  (composer/picker/sends/Back), like the delete in-flight state
-     *  (user 2026-08-08). */
+     *  (user 2026-08-07). */
     private var switchInFlight = false
 
     /** Terminal-history swipe pair-dedup (TP fast swipes emit DPAD pairs). */
     private var lastTerminalSwipe: String? = null
     private var lastTerminalSwipeTime = 0L
+
+    /** Last ctrl+c send (nanoTime) — double-ctrl+c must never exit Claude. */
+    private var lastCtrlCNanos = 0L
+
+    /**
+     * Sends a single ctrl+c to the PTY; a second one within CTRL_C_DEDUP_NANOS
+     * is dropped, so Claude Code's double-ctrl+c session exit can never fire
+     * from the glasses (user 2026-08-07; the desktop habit is not wanted
+     * here).
+     */
+    private fun sendCtrlC() {
+        val now = System.nanoTime()
+        if (now - lastCtrlCNanos < CTRL_C_DEDUP_NANOS) return
+        lastCtrlCNanos = now
+        ssh.sendCharacters("\u0003")
+    }
 
     /** Same-direction dedup for terminal-history swipes (120 ms window). */
     private fun terminalSwipeAllowed(arrow: String): Boolean {
@@ -103,7 +119,7 @@ class MainActivity : Activity() {
 
     // Lazy: field initializers run before attachBaseContext, so a direct
     // getSharedPreferences here NPEs at activity instantiation (crash fixed
-    // 2026-08-08, caught on device).
+    // 2026-08-07, caught on device).
     private val prefs by lazy { getSharedPreferences(SESSION_PREFS, MODE_PRIVATE) }
 
     /**
@@ -135,11 +151,9 @@ class MainActivity : Activity() {
             lastSuggestion = suggestion
             inputHistory.setSuggestion(suggestion)
         }
-        // (Panel mode has NO auto-exit: the input-line signal proved
-        // unreliable with two-level pickers like /usage, where the line
-        // clears transiently during row switches — it exited panel mode
-        // mid-interaction. Panel mode ends only on explicit cancel.
-        // 2026-08-06.)
+        // Panel-mode auto-exit runs on its own poller (panelExitRunnable,
+        // reply-signal design 2026-08-07): it exits when Claude's reply has
+        // rendered and holds while a numbered picker is on screen.
         terminalFrameScheduled.set(false)
         if (pendingTerminalFrame.get() != null) scheduleTerminalFrame()
     }
@@ -153,7 +167,7 @@ class MainActivity : Activity() {
 
         terminalView = TerminalView(this)
         // Unbound placeholder; bindScrollback rebinds it per conversation
-        // (input history is keyed per conversation, user 2026-08-08).
+        // (input history is keyed per conversation, user 2026-08-07).
         inputHistory = InputHistory(filesDir)
 
         ssh = SshTerminalSession(
@@ -185,6 +199,7 @@ class MainActivity : Activity() {
         terminalView.post { updateKeyboardIndicator() }
         scrollbackStore = ScrollbackStore(filesDir)
         mainHandler.post(sessionSyncRunnable)
+        mainHandler.post(panelExitRunnable)
         registerReceiver(
             inputDeviceReceiver,
             android.content.IntentFilter(ACTION_INPUT_DEVICE_CHANGED),
@@ -353,7 +368,7 @@ class MainActivity : Activity() {
      */
     private fun handleSystemKeyAction(action: Int) {
         // Switch in flight: the long-press/Shutter broadcasts are consumed
-        // (no ESC/ctrl+c to the dying pane, 2026-08-08).
+        // (no ESC/ctrl+c to the dying pane, 2026-08-07).
         if (switchInFlight) return
         if (sessionPicker.open) {
             // Strict isolation: only the long-press broadcast acts (delete
@@ -433,7 +448,7 @@ class MainActivity : Activity() {
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         if (sessionPicker.open && handleSessionPickerKey(keyCode, event)) return true
         // Conversation switch in flight: ALL input is locked (user
-        // 2026-08-08) — ctrl+c, disconnect, ESC, GO arbitration included.
+        // 2026-08-07) — ctrl+c, disconnect, ESC, GO arbitration included.
         if (switchInFlight) return true
         if (mode != Mode.ENDPOINTS && isPrimaryKey(keyCode)) {
             return handlePrimaryKeyDown(keyCode, event)
@@ -447,7 +462,7 @@ class MainActivity : Activity() {
 
     override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
         // The picker consumes every key-up; GO still arbitrates so its
-        // double press can cancel the picker (2026-08-08).
+        // double press can cancel the picker (2026-08-07).
         if (sessionPicker.open) {
             if (isRingKey(event) && keyCode == KeyEvent.KEYCODE_F8) handleGoKey(event)
             return true
@@ -651,7 +666,7 @@ class MainActivity : Activity() {
                     // Long press: ctrl+c normally; blocked in panel mode
                     // (strict isolation — GO single is the panel cancel).
                     if (mode == Mode.TERMINAL && !panelMode && !sessionPicker.open && sshState == "CONNECTED") {
-                        ssh.sendCharacters("")
+                        sendCtrlC()
                     }
                     return
                 }
@@ -717,7 +732,7 @@ class MainActivity : Activity() {
                 return true
             }
             KeyEvent.KEYCODE_3 -> {
-                if (event.repeatCount == 0) ssh.sendCharacters("")
+                if (event.repeatCount == 0) sendCtrlC()
                 return true
             }
             KeyEvent.KEYCODE_4 -> {
@@ -756,7 +771,7 @@ class MainActivity : Activity() {
         } else {
             val single = Runnable {
                 terminalRightKnobDoublePending = null
-                if (sshState == "CONNECTED") ssh.sendCharacters("")
+                if (sshState == "CONNECTED") sendCtrlC()
             }
             terminalRightKnobDoublePending = single
             mainHandler.postDelayed(single, RIGHT_KNOB_DOUBLE_WINDOW_MS)
@@ -775,7 +790,7 @@ class MainActivity : Activity() {
         when (keyCode) {
             KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_UP -> {
                 // TP fast swipes emit DPAD PAIRS — dedup like the picker or
-                // one swipe scrolls 6 rows instead of 3 (user 2026-08-08).
+                // one swipe scrolls 6 rows instead of 3 (user 2026-08-07).
                 if (terminalSwipeAllowed(ARROW_UP)) {
                     publishTerminalFrame(terminalOutput.scrollOlder())
                 }
@@ -789,7 +804,7 @@ class MainActivity : Activity() {
             }
             KeyEvent.KEYCODE_BACK -> {
                 // Locked during a conversation switch: disconnecting
-                // mid-respawn would strand the pane (2026-08-08).
+                // mid-respawn would strand the pane (2026-08-07).
                 if (!switchInFlight) {
                     persistScrollback()
                     ssh.disconnect()
@@ -961,7 +976,7 @@ class MainActivity : Activity() {
         if (pending != null) {
             mainHandler.removeCallbacks(pending)
             pendingShutterSingle = null
-            if (sshState == "CONNECTED") ssh.sendCharacters("")
+            if (sshState == "CONNECTED") sendCtrlC()
         } else {
             publishTerminalFrame(terminalOutput.returnToLive())
             val window = Runnable { pendingShutterSingle = null }
@@ -1113,7 +1128,7 @@ class MainActivity : Activity() {
         when (mode) {
             Mode.TERMINAL -> {
                 if (switchInFlight) {
-                    // Locked during a conversation switch (2026-08-08).
+                    // Locked during a conversation switch (2026-08-07).
                 } else if (panelMode) {
                     // Strict isolation: TP single does nothing while the
                     // panel is open (confirm = TP long, cancel = TP double).
@@ -1143,7 +1158,7 @@ class MainActivity : Activity() {
 
     private fun openComposer() {
         // Locked while a conversation switch is in flight: input must not
-        // reach the dying/restarting pane (user 2026-08-08).
+        // reach the dying/restarting pane (user 2026-08-07).
         if (switchInFlight) return
         android.util.Log.i("RokidTerminal", "mode -> COMPOSER (openComposer)")
         panelMode = false
@@ -1184,7 +1199,7 @@ class MainActivity : Activity() {
             // The first message creates the server JSONL: if this chat's
             // cached row is still the "New chat" placeholder, refetch now so
             // the real title appears without exiting the terminal (bug 1
-            // follow-up, 2026-08-08).
+            // follow-up, 2026-08-07).
             refreshNewChatTitleIfNeeded()
         }
         inputHistory.add(text)
@@ -1334,7 +1349,7 @@ class MainActivity : Activity() {
 
     private fun handleSessionPickerKey(keyCode: Int, event: KeyEvent): Boolean {
         // Delete round trip in flight: everything is consumed (strict
-        // isolation until the result lands, 2026-08-08).
+        // isolation until the result lands, 2026-08-07).
         if (sessionPicker.deleteInFlight) return true
         return when (keyCode) {
         KeyEvent.KEYCODE_HOME, KeyEvent.KEYCODE_MOVE_HOME -> {
@@ -1374,7 +1389,7 @@ class MainActivity : Activity() {
                 }
                 // Fast swipes emit DPAD PAIRS (LEFT+UP / RIGHT+DOWN) within a
                 // few ms — dedup the same direction like panel mode, or one
-                // swipe moves two items (2026-08-08).
+                // swipe moves two items (2026-08-07).
                 val arrow = if (next) ARROW_DOWN else ARROW_UP
                 val now = android.os.SystemClock.uptimeMillis()
                 if (arrow == lastPickerSwipe && now - lastPickerSwipeTime < SWIPE_PAIR_DEDUP_MS) {
@@ -1441,7 +1456,7 @@ class MainActivity : Activity() {
         if (sessionPicker.armDelete()) {
             sessionPickerSyncToView()
         } else {
-            // Tell the user WHY the arm failed (user 2026-08-08): the ▶
+            // Tell the user WHY the arm failed (user 2026-08-07): the ▶
             // current conversation is never deletable; anything else (folder
             // level / + New Chat slot) needs a session row selected.
             val onCurrent = sessionPicker.open && sessionPicker.level == 1 &&
@@ -1480,7 +1495,7 @@ class MainActivity : Activity() {
         val target = sessionPicker.confirm()
         if (target == null) {
             // Descended: in-session switching starts on the CURRENT (▶)
-            // conversation, not the new-chat slot (user 2026-08-08). The
+            // conversation, not the new-chat slot (user 2026-08-07). The
             // connect flow keeps the new-chat default.
             if (!sessionPickerConnectMode) sessionPicker.selectCurrentSession()
             sessionPickerSyncToView()
@@ -1525,9 +1540,51 @@ class MainActivity : Activity() {
 
     private var panelMode = false
 
+    /** Fingerprint of the screen above the input line at panel entry —
+     *  Claude's reply is detected as a change from this. */
+    private var panelEntryFingerprint: String? = null
+    /** Last moment the input line was NOT the bare prompt (the picker's
+     *  focus marker occupies it while a picker is open). */
+    private var lastNonBarePromptNanos = 0L
+
+    /**
+     * Panel auto-exit (user 2026-08-07): the panel exits when Claude's REPLY
+     * has arrived — the input line is back to the bare "❯ " prompt (the
+     * picker's focus marker is gone) AND the screen changed from the panel
+     * entry (the reply rendered). While the picker is open the input line
+     * holds the focus marker, so the panel is held with no timeouts.
+     */
+    private val panelExitRunnable = object : Runnable {
+        override fun run() {
+            if (panelMode) {
+                val now = System.nanoTime()
+                // Hold while a numbered picker is on screen: /usage's two
+                // levels keep the numbered rows mid-screen with a BARE
+                // prompt at the bottom, so the bare-prompt signal alone
+                // misfired and auto-exited mid-picker (user 2026-08-07).
+                val vertical = terminalView.pickerAxis() == TerminalView.PickerAxis.VERTICAL
+                val bare = terminalView.inputLineText() == null
+                if (vertical || !bare) {
+                    lastNonBarePromptNanos = now
+                } else {
+                    val fingerprint = panelEntryFingerprint
+                    if (fingerprint != null &&
+                        terminalView.frameFingerprint() != fingerprint &&
+                        now - lastNonBarePromptNanos > PANEL_EXIT_REPLY_NANOS
+                    ) {
+                        cancelPanelMode()
+                    }
+                }
+            }
+            mainHandler.postDelayed(this, PANEL_EXIT_POLL_MS)
+        }
+    }
+
     private fun enterPanelMode() {
         if (mode != Mode.TERMINAL || panelMode) return
         panelMode = true
+        panelEntryFingerprint = terminalView.frameFingerprint()
+        lastNonBarePromptNanos = System.nanoTime()
         android.util.Log.i("RokidTerminal", "mode -> PANEL (command panel passthrough)")
         updateHeader()
     }
@@ -1548,7 +1605,8 @@ class MainActivity : Activity() {
      * single = cancel; Ring touchpad long = confirm, GO single = cancel.
      * Everything else is blocked while the panel is open.
      */
-    private fun handlePanelKey(keyCode: Int, event: KeyEvent): Boolean = when (keyCode) {
+    private fun handlePanelKey(keyCode: Int, event: KeyEvent): Boolean {
+        return when (keyCode) {
         KeyEvent.KEYCODE_2 -> {
             if (event.repeatCount == 0) ssh.sendArrowUp()
             true
@@ -1610,6 +1668,7 @@ class MainActivity : Activity() {
             true
         }
         else -> true // strict isolation: nothing else acts while the panel is open
+        }
     }
 
     private var lastPanelArrow: String? = null
@@ -1846,7 +1905,7 @@ class MainActivity : Activity() {
         sessionPickerConnectMode = connectMode
         clearPrimaryGesture()
         sessionPicker.open(rememberedFolder(endpoint.id), rememberedSession(endpoint.id))
-        // Cache-first (user request 2026-08-08): the last fetched folder
+        // Cache-first (user request 2026-08-07): the last fetched folder
         // list shows instantly (a fresh SSH fetch takes seconds on this
         // network), then refreshSessionFolders updates it in the background.
         // Stale entries are safe: the server switch verb re-validates the
@@ -1856,7 +1915,7 @@ class MainActivity : Activity() {
         if (cached != null) {
             sessionPicker.setFolders(cached, failed = false)
             // Pre-select the remembered folder when it is still listed
-            // (user decision 2026-08-08); otherwise the base dir stays.
+            // (user decision 2026-08-07); otherwise the base dir stays.
             sessionPicker.selectFolder(sessionPicker.currentFolderPath)
         }
         sessionPickerSyncToView()
@@ -1884,7 +1943,7 @@ class MainActivity : Activity() {
                 }
                 // Cache ONLY successful fetches: a transient failure must
                 // not poison the cache with the /srv-only fallback, or every
-                // later open shows it instantly (user report 2026-08-08).
+                // later open shows it instantly (user report 2026-08-07).
                 if (folders != null && folders.isNotEmpty()) {
                     cachedFolders = folders
                 }
@@ -1892,7 +1951,7 @@ class MainActivity : Activity() {
                 if (sessionPicker.open && sessionPicker.level == 0 && !busy) {
                     // Apply live ALWAYS at the folder level (a new folder
                     // must appear even if the user navigated — user report
-                    // 2026-08-08), restoring the user's current position by
+                    // 2026-08-07), restoring the user's current position by
                     // path instead of yanking them to the top/remembered.
                     val selectedPath = sessionPicker.selectedFolder()?.path
                     sessionPicker.setFolders(fresh, failed = folders == null)
@@ -1903,7 +1962,7 @@ class MainActivity : Activity() {
                 } else if (sessionPicker.open && sessionPicker.level == 1 && !busy) {
                     // Same at the conversation level: a new chat must appear
                     // even while the user is already browsing the list
-                    // (bug 1 follow-up, 2026-08-08) — restore the folder by
+                    // (bug 1 follow-up, 2026-08-07) — restore the folder by
                     // path and the selection by session id.
                     val folderPath = sessionPicker.selectedFolder()?.path
                     val selectedId = sessionPicker.selectedFolder()?.sessions
@@ -1936,12 +1995,12 @@ class MainActivity : Activity() {
         lastSwitchNanos = System.nanoTime()
         // The resume replay genuinely scrolls the viewport; suppress scroll
         // capture during the switch window so the imported transcript is not
-        // duplicated in the scrollback (2026-08-08).
+        // duplicated in the scrollback (2026-08-07).
         terminalOutput.suppressScrollCaptureFor(REPLAY_SUPPRESSION_MS)
         // The session we are switching AWAY from: until a new chat's first
         // message, the server's "newest session" is still this one, and
         // neither the discovery loop nor the watcher may "correct" back to
-        // it (bug 1, 2026-08-08).
+        // it (bug 1, 2026-08-07).
         val previousSessionId = scrollbackSessionId
         terminalView.setState(if (thenConnect) "CONNECTING / STARTING" else "SWITCHING…")
         val tmuxSession = endpoint.sessionName
@@ -1958,23 +2017,23 @@ class MainActivity : Activity() {
                     // A freshly created conversation appears in the cached
                     // list immediately — the server JSONL is only written on
                     // the first message, so without this the new chat would
-                    // stay invisible in the picker (user 2026-08-08).
+                    // stay invisible in the picker (user 2026-08-07).
                     if (isNew) rememberNewSessionInCache(folderPath, sessionId)
                     // The app-generated session id may differ from the
                     // server's real file (--session-id can be ignored / the
                     // file appears only later) — discover and correct the
                     // binding so resumes work and rows don't duplicate
-                    // (bug 1, 2026-08-08).
+                    // (bug 1, 2026-08-07).
                     if (isNew) discoverNewSessionId(folderPath, sessionId, previousSessionId)
                     // Resumed conversations get their FULL transcript pulled
                     // into the local scrollback (the server replay is a
                     // redraw, not a scroll, so nothing is captured locally —
-                    // user report 2026-08-08).
+                    // user report 2026-08-07).
                     if (!isNew) fetchConversationHistory(folderPath, sessionId)
                     // After the replay settles, trim the imported transcript
                     // to the turns ABOVE the live screen — the screen shows
                     // the tail, and browsing appends the screen below the
-                    // scrollback (2026-08-08).
+                    // scrollback (2026-08-07).
                     mainHandler.postDelayed({
                         if (sshState == "CONNECTED") terminalOutput.trimScrollbackToScreen()
                     }, REPLAY_SUPPRESSION_MS + 1500L)
@@ -2033,7 +2092,7 @@ class MainActivity : Activity() {
      * After sending in a freshly created chat whose cached row is still the
      * "New chat" placeholder, refetch the folder list so the real
      * first-message title replaces it without exiting the terminal
-     * (bug 1 follow-up, 2026-08-08). No-op otherwise.
+     * (bug 1 follow-up, 2026-08-07). No-op otherwise.
      */
     private fun refreshNewChatTitleIfNeeded() {
         val folderKey = scrollbackFolderKey ?: return
@@ -2050,7 +2109,7 @@ class MainActivity : Activity() {
      * Adds a freshly created conversation to the cached folder list with a
      * "New chat" placeholder title, so the next picker open shows it
      * instantly. The background refresh replaces the placeholder with the
-     * real first-message title once the server JSONL exists (2026-08-08).
+     * real first-message title once the server JSONL exists (2026-08-07).
      */
     private fun rememberNewSessionInCache(folderPath: String, sessionId: String) {
         val cached = cachedFolders ?: return
@@ -2070,7 +2129,7 @@ class MainActivity : Activity() {
      * first message), corrects the binding/remembered target/cache to the
      * REAL id. The app-generated placeholder id may differ from the server's
      * file, which caused duplicate-looking rows, failed resumes, and a wrong
-     * ▶ marker (bug 1, 2026-08-08). Session ids are never logged.
+     * ▶ marker (bug 1, 2026-08-07). Session ids are never logged.
      */
     private fun discoverNewSessionId(folderPath: String, tempSessionId: String, previousSessionId: String?) {
         val endpoint = activeEndpoint ?: return
@@ -2086,7 +2145,7 @@ class MainActivity : Activity() {
                 if (realId == tempSessionId || realId.isEmpty()) continue
                 // Before the new chat's first message the server's newest
                 // session is still the one we switched away from — never
-                // "correct" back to it (bug 1, 2026-08-08).
+                // "correct" back to it (bug 1, 2026-08-07).
                 if (realId == previousSessionId) continue
                 runOnUiThread {
                     if (scrollbackSessionId == tempSessionId) {
@@ -2117,7 +2176,7 @@ class MainActivity : Activity() {
      * Pulls a resumed conversation's transcript from the server into the
      * local scrollback (force import — works while Claude's alt screen is
      * active). The browse view shows the whole conversation, not just the
-     * rows captured while watching live (2026-08-08).
+     * rows captured while watching live (2026-08-07).
      */
     private fun fetchConversationHistory(folderPath: String, sessionId: String) {
         val endpoint = activeEndpoint ?: return
@@ -2162,11 +2221,11 @@ class MainActivity : Activity() {
         // screen is active, and after a respawn the screen still carries the
         // PREVIOUS conversation's alt state — without a reset the resumed
         // conversation's persisted history could not be imported and
-        // browsing was empty (user report 2026-08-08). reset() clears the
+        // browsing was empty (user report 2026-08-07). reset() clears the
         // scrollback AND the alt flag; the new Claude redraws the screen.
         publishTerminalFrame(terminalOutput.reset())
         terminalOutput.importScrollbackText(rows)
-        // Input history is per-conversation too (user 2026-08-08): each
+        // Input history is per-conversation too (user 2026-08-07): each
         // conversation owns its drafts; switching rebinds the cache.
         historyPreview = null
         terminalView.setHistoryPreview(null)
@@ -2197,7 +2256,7 @@ class MainActivity : Activity() {
                 // session" is still the PREVIOUS conversation — rebinding
                 // would clobber the fresh binding, point ▶ at the old chat,
                 // and import the old history into the new one (bug 1,
-                // 2026-08-08). discoverNewSessionId handles the real-id
+                // 2026-08-07). discoverNewSessionId handles the real-id
                 // correction during this window.
                 if (System.nanoTime() - lastSwitchNanos < SWITCH_GRACE_NANOS) return@runOnUiThread
                 val folderKey = scrollbackFolderKey ?: return@runOnUiThread
@@ -2348,7 +2407,7 @@ class MainActivity : Activity() {
          * After a conversation switch the watcher suppresses rebinds for this
          * long: a new conversation's JSONL appears only on its first message,
          * so before that the server's newest session is still the previous
-         * conversation (bug 1, 2026-08-08). discoverNewSessionId corrects the
+         * conversation (bug 1, 2026-08-07). discoverNewSessionId corrects the
          * real id during this window.
          */
         private const val SWITCH_GRACE_NANOS = 90L * 1_000_000_000L
@@ -2363,7 +2422,7 @@ class MainActivity : Activity() {
          * Full known built-in command set (server `claude` list + commands
          * verified in real use, 2026-08-06). The display list is built via
          * CommandPaletteState.displayList (bare "/" and the session-picker
-         * action lead). `/resume` and `/continue` were removed 2026-08-08:
+         * action lead). `/resume` and `/continue` were removed 2026-08-07:
          * the local conversation picker supersedes them. The server helper
          * adds custom commands/skills when reachable; the UI never claims
          * completeness.
@@ -2382,6 +2441,14 @@ class MainActivity : Activity() {
 
         /** Fast swipes emit DPAD pairs within a few ms; dedup the same arrow. */
         private const val SWIPE_PAIR_DEDUP_MS = 120L
+
+        /** Double-ctrl+c exit suppression window (Claude Code exits on two). */
+        private const val CTRL_C_DEDUP_NANOS = 2_000L * 1_000_000L
+
+        /** Panel auto-exit timings (reply-signal design, 2026-08-07). */
+        private const val PANEL_EXIT_POLL_MS = 1_000L
+        private const val PANEL_EXIT_REPLY_NANOS = 2_000L * 1_000_000L
+
         private const val ARROW_UP = "up"
         private const val ARROW_DOWN = "down"
         private const val ARROW_LEFT = "left"
