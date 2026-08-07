@@ -1912,7 +1912,11 @@ class MainActivity : Activity() {
             terminalView.setState("KEY ERROR: ${error.message}")
             return
         }
-        ssh.connect(endpoint, identity)
+        // Legacy command: recreates a missing tmux session WITH the Claude
+        // launcher (pre-feature reconnect semantics); a surviving session
+        // still short-circuits to a plain attach. The sync watcher
+        // reconciles the conversation binding afterward.
+        ssh.connect(endpoint, identity, legacy = true)
     }
 
     /**
