@@ -53,6 +53,21 @@ class TerminalOutputProcessor(
     }
 
     /**
+     * Replaces the scrollback even while the alternate screen is active —
+     * rebuilding a resumed conversation's history from the server export
+     * (2026-08-08). Also returns the view to live (the new rows replace the
+     * old ones; the user's offset would otherwise index stale rows).
+     */
+    @Synchronized
+    fun importScrollbackTextForce(rows: List<String>) {
+        screen.importScrollbackTextForce(rows)
+        scrollBaseline = emptyList()
+        scrollOffsetRows = 0
+        hasNewOutput = false
+        revision++
+    }
+
+    /**
      * Unconditionally empties the in-memory scrollback (conversation
      * switches must not leak the previous conversation's rows; the import
      * alone is a no-op while the alternate screen is active or for empty

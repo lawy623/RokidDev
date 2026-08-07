@@ -298,12 +298,97 @@ cmd_delete() {
   printf 'ok\t%s\t%s\n' "$enc" "$id"
 }
 
+# Export a conversation as plain text rows for the app's local scrollback:
+# user messages get a "❯ " prefix, assistant text is plain, tool results are
+# skipped, control chars stripped, each line truncated, newest EXPORT_MAX
+# lines only. Validation identical to cmd_delete (resolved dir under base,
+# id charset). Output: plain lines (no F/S protocol).
+cmd_export() {
+  local base="$1" dir="$2" id="$3"
+  case "$id" in
+    *[!A-Za-z0-9_-]*) echo "error\tbad session id"; return 1 ;;
+  esac
+  local base_resolved dir_resolved
+  base_resolved="$(cd "$base" 2>/dev/null && pwd -P)" || { echo "error\tbase not accessible"; return 1; }
+  dir_resolved="$(cd "$dir" 2>/dev/null && pwd -P)" || { echo "error\tpath not accessible"; return 1; }
+  if [ "$dir_resolved" = "$base_resolved" ] ||
+     [ "${dir_resolved#"$base_resolved"/}" != "$dir_resolved" ]; then
+    : # ok
+  else
+    echo "error\tpath outside base"; return 1
+  fi
+  local enc target
+  enc="$(encode "$dir_resolved")"
+  target="$PROJECTS_DIR/$enc/$id.jsonl"
+  [ -f "$target" ] || { echo "error\tnot found"; return 1; }
+  python3 - "$target" << 'PYEOF'
+import json, re, sys
+path = sys.argv[1]
+MAX = 2000
+out = []
+with open(path, encoding="utf-8", errors="replace") as fh:
+    for line in fh:
+        try:
+            e = json.loads(line)
+        except Exception:
+            continue
+        t = e.get("type")
+        if t == "user":
+            if e.get("isMeta"):
+                continue
+            c = e.get("content")
+            if c is None:
+                m = e.get("message")
+                c = m.get("content") if isinstance(m, dict) else None
+            text = ""
+            if isinstance(c, str):
+                text = c
+            elif isinstance(c, list):
+                for b in c:
+                    if isinstance(b, dict) and isinstance(b.get("text"), str):
+                        text = b["text"]
+                        break
+            if not text:
+                continue
+            # Slash commands are stored as XML blocks — collapse to the
+            # command name (same logic as the title extraction).
+            name = re.search(r"<command-name>(.*?)</command-name>", text)
+            if name:
+                args = re.search(r"<command-args>(.*?)</command-args>", text)
+                a = args.group(1).strip() if args and args.group(1).strip() else ""
+                text = name.group(1).strip() + (" " + a if a else "")
+            # Local-command stdout wrapper: keep only the inner text.
+            text = re.sub(r"</?local-command-stdout>", "", text)
+            for ln in text.splitlines() or [""]:
+                clean = "".join(ch if ord(ch) >= 0x20 else " " for ch in ln)
+                if clean.strip():
+                    out.append("❯ " + clean[:100])
+        elif t == "assistant":
+            c = e.get("content")
+            if not isinstance(c, list):
+                continue
+            for b in c:
+                if isinstance(b, dict) and isinstance(b.get("text"), str):
+                    for ln in b["text"].splitlines() or [""]:
+                        clean = "".join(ch if ord(ch) >= 0x20 else " " for ch in ln)
+                        if clean.strip():
+                            out.append(clean[:100])
+        if len(out) > MAX * 2:
+            del out[: len(out) - MAX * 2]
+print("\n".join(out[-MAX:]))
+PYEOF
+}
+
 main() {
   local verb="${1:-}"
   case "$verb" in
     delete)
       [ $# -ge 5 ] || { echo "error\tusage: delete <tmux-session> <base-dir> <real-dir> <session-id>"; return 1; }
       cmd_delete "$2" "$3" "$4" "$5"
+      ;;
+    export)
+      [ $# -ge 4 ] || { echo "error\tusage: export <base-dir> <real-dir> <session-id>"; return 1; }
+      cmd_export "$2" "$3" "$4"
       ;;
     list)
       [ $# -ge 2 ] || { echo "error\tusage: list <base-dir>"; return 1; }

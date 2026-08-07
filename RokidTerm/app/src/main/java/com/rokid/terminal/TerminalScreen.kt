@@ -200,6 +200,20 @@ class TerminalScreen(
         totalScrollbackRowsAppended = 0L
     }
 
+    /**
+     * Replaces the scrollback even while the alternate screen is active —
+     * for rebuilding a resumed conversation's history from the server
+     * transcript (2026-08-08). The live alt screen is untouched; the rows
+     * become browsable immediately (browsing shows the primary screen +
+     * scrollback regardless of the active screen).
+     */
+    fun importScrollbackTextForce(rows: List<String>) {
+        if (rows.isEmpty()) return
+        scrollback.clear()
+        totalScrollbackRowsAppended = 0L
+        rows.forEach { appendScrollbackRow(textRow(it)) }
+    }
+
     private fun textRow(text: String): Array<TerminalCell> {
         val row = Array(columns) { TerminalCell() }
         var column = 0

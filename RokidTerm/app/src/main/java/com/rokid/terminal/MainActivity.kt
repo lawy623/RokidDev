@@ -1865,6 +1865,11 @@ class MainActivity : Activity() {
                     bindScrollback(folderPath, sessionId)
                     rememberTarget(folderPath, sessionId)
                     sessionPicker.markCurrent(folderPath, sessionId)
+                    // Resumed conversations get their FULL transcript pulled
+                    // into the local scrollback (the server replay is a
+                    // redraw, not a scroll, so nothing is captured locally —
+                    // user report 2026-08-08).
+                    if (!isNew) fetchConversationHistory(folderPath, sessionId)
                     if (thenConnect) connectAfterSwitch(endpoint)
                     updateHeader()
                     android.widget.Toast.makeText(
@@ -1911,6 +1916,25 @@ class MainActivity : Activity() {
                 } else {
                     sessionPickerSyncToView()
                     android.widget.Toast.makeText(this, "Delete failed", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            }
+        }.start()
+    }
+
+    /**
+     * Pulls a resumed conversation's transcript from the server into the
+     * local scrollback (force import — works while Claude's alt screen is
+     * active). The browse view shows the whole conversation, not just the
+     * rows captured while watching live (2026-08-08).
+     */
+    private fun fetchConversationHistory(folderPath: String, sessionId: String) {
+        val endpoint = activeEndpoint ?: return
+        val fetcher = sessionFetcher ?: return
+        Thread {
+            val raw = fetcher.exportConversation(endpoint.workspace, folderPath, sessionId)
+            runOnUiThread {
+                if (raw != null && raw.isNotBlank() && !raw.startsWith("error\t")) {
+                    terminalOutput.importScrollbackTextForce(raw.lineSequence().toList())
                 }
             }
         }.start()

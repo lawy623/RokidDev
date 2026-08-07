@@ -42,6 +42,15 @@ class ServerSessionFetcher(
             "${shellQuote(folderPath)} ${shellQuote(sessionId)}",
     )
 
+    /**
+     * Exports a conversation's transcript as plain text rows (user messages
+     * with a ❯ prefix, assistant text plain, tool results skipped) so the
+     * app can rebuild local scrollback for a resumed conversation.
+     */
+    fun exportConversation(baseDir: String, folderPath: String, sessionId: String): String? = run(
+        "$HELPER export ${shellQuote(baseDir)} ${shellQuote(folderPath)} ${shellQuote(sessionId)}",
+    )
+
     /** Returns the helper's raw output; the caller parses with [parseSwitchResult]. */
     fun switchConversation(
         tmuxSession: String,
