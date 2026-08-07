@@ -113,12 +113,19 @@ class TerminalView(context: Context) : View(context) {
     private var commandPaletteOpen = false
     private var commandPaletteItems: List<String> = emptyList()
     private var commandPaletteSelected = 0
+    private var sessionPickerUi = SessionPickerUi()
 
     /** Command palette state for the composer overlay (modal list). */
     fun setCommandPalette(items: List<String>, selected: Int, open: Boolean) {
         commandPaletteOpen = open
         commandPaletteItems = items
         commandPaletteSelected = selected
+        invalidate()
+    }
+
+    /** Conversation-picker state for the modal overlay. */
+    fun setSessionPicker(ui: SessionPickerUi) {
+        sessionPickerUi = ui
         invalidate()
     }
 
@@ -306,6 +313,8 @@ class TerminalView(context: Context) : View(context) {
         ) {
             drawNewOutputBanner(canvas, footerLine)
         }
+
+        if (sessionPickerUi.open) drawSessionPicker(canvas)
     }
 
     /** Small popup box above the footer announcing new output while viewing history. */
@@ -850,6 +859,130 @@ class TerminalView(context: Context) : View(context) {
         resetPaint()
     }
 
+    private fun drawSessionPicker(canvas: Canvas) {
+        val left = 24f
+        val right = width - 24f
+        val top = 90f
+        val bottom = height - 60f
+
+        paint.color = Color.BLACK
+        paint.alpha = 246
+        canvas.drawRect(left, top, right, bottom, paint)
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 2f
+        paint.color = Color.GREEN
+        paint.alpha = 245
+        canvas.drawRect(left, top, right, bottom, paint)
+        resetPaint()
+
+        paint.isFakeBoldText = true
+        paint.textSize = 16f
+        val header = if (sessionPickerUi.level == 0) {
+            "PROJECTS / UP-DOWN SELECT"
+        } else {
+            val folder = sessionPickerUi.folders.getOrNull(sessionPickerUi.folderIndex)
+            "CONVERSATIONS / " + (folder?.path?.substringAfterLast('/')?.ifBlank { folder.path } ?: "?")
+        }
+        canvas.drawText(header, left + 12f, top + 24f, paint)
+        paint.isFakeBoldText = false
+        canvas.drawLine(left + 10f, top + 54f, right - 10f, top + 54f, paint)
+
+        if (sessionPickerUi.loading) {
+            paint.alpha = 255
+            paint.textSize = 16f
+            canvas.drawText("LOADING…", left + 12f, top + 96f, paint)
+            resetPaint()
+            return
+        }
+
+        val listLeft = left + 12f
+        val listTop = top + 64f
+        val rowHeight = 22f
+        val rowWidth = right - left - 34f
+        val items = if (sessionPickerUi.level == 0) {
+            sessionPickerUi.folders.map { it.path }
+        } else {
+            val folder = sessionPickerUi.folders.getOrNull(sessionPickerUi.folderIndex)
+            listOf("＋ 新对话") + (folder?.sessions?.map { it.title } ?: emptyList())
+        }
+        val selected = if (sessionPickerUi.level == 0) {
+            sessionPickerUi.folderIndex
+        } else {
+            sessionPickerUi.sessionIndex
+        }
+        val visible = minOf(items.size, 12)
+        val windowStart = (selected - visible / 2)
+            .coerceIn(0, (items.size - visible).coerceAtLeast(0))
+
+        if (sessionPickerUi.error && items.size <= 1) {
+            paint.alpha = 170
+            paint.textSize = 13f
+            canvas.drawText("会话助手不可用 / 确认 = 新对话", listLeft, listTop + 90f, paint)
+        }
+
+        paint.textSize = 16f
+        for (i in 0 until visible) {
+            val itemIndex = windowStart + i
+            val rowTop = listTop + i * rowHeight
+            var text = items[itemIndex]
+            if (itemIndex == selected) {
+                paint.style = Paint.Style.FILL
+                paint.color = Color.GREEN
+                paint.alpha = 90
+                canvas.drawRect(listLeft - 4f, rowTop, right - 14f, rowTop + rowHeight, paint)
+                paint.alpha = 255
+            } else {
+                paint.alpha = 230
+            }
+            val current = if (sessionPickerUi.level == 0) {
+                sessionPickerUi.currentFolderPath == sessionPickerUi.folders.getOrNull(itemIndex)?.path
+            } else {
+                itemIndex >= 1 && sessionPickerUi.currentSessionId ==
+                    sessionPickerUi.folders.getOrNull(sessionPickerUi.folderIndex)
+                        ?.sessions?.getOrNull(itemIndex - 1)?.id
+            }
+            if (current) text = "▶ $text"
+            if (paint.measureText(text) > rowWidth) text = truncateToWidth(text, rowWidth)
+            paint.style = Paint.Style.FILL
+            canvas.drawText(text, listLeft, rowTop + 17f, paint)
+        }
+
+        if (items.size > visible) {
+            val trackTop = listTop + 2f
+            val trackBottom = listTop + visible * rowHeight - 2f
+            val trackHeight = (trackBottom - trackTop).coerceAtLeast(1f)
+            val thumbHeight = (trackHeight * visible / items.size).coerceIn(14f, trackHeight)
+            val maxStart = (items.size - visible).coerceAtLeast(1)
+            val thumbTop = trackTop + (trackHeight - thumbHeight) * windowStart / maxStart
+            paint.style = Paint.Style.FILL
+            paint.color = Color.GREEN
+            paint.alpha = 65
+            canvas.drawRect(right - 12f, trackTop, right - 10f, trackBottom, paint)
+            paint.alpha = 210
+            canvas.drawRect(right - 13f, thumbTop, right - 9f, thumbTop + thumbHeight, paint)
+        }
+
+        paint.alpha = 175
+        paint.textSize = 11f
+        canvas.drawLine(left + 10f, bottom - 60f, right - 10f, bottom - 60f, paint)
+        val hint = if (sessionPickerUi.level == 0) {
+            "UP/DOWN SELECT   CONFIRM OPEN"
+        } else {
+            "CONFIRM SWITCH   BACK = UP"
+        }
+        canvas.drawText(hint, left + 12f, bottom - 36f, paint)
+        canvas.drawText("BACK / KNOB-R / GO-DOUBLE CANCEL", left + 12f, bottom - 15f, paint)
+        resetPaint()
+    }
+
+    /** Ellipsizes [value] to fit [maxWidth] using the current paint. */
+    private fun truncateToWidth(value: String, maxWidth: Float): String {
+        if (paint.measureText(value) <= maxWidth) return value
+        var end = value.length
+        while (end > 1 && paint.measureText(value.substring(0, end) + "…") > maxWidth) end--
+        return value.substring(0, end) + "…"
+    }
+
     private fun buildComposerLines(value: String, maxWidth: Float): List<ComposerLine> {
         if (value.isEmpty()) return listOf(ComposerLine(0, 0))
         val result = ArrayList<ComposerLine>()
@@ -945,3 +1078,16 @@ class TerminalView(context: Context) : View(context) {
         private val NUMBERED_ITEM = Regex("""\d\.""")
     }
 }
+
+/** Snapshot of the conversation picker overlay (design 2026-08-07). */
+data class SessionPickerUi(
+    val open: Boolean = false,
+    val loading: Boolean = false,
+    val error: Boolean = false,
+    val level: Int = 0,
+    val folders: List<RemoteFolder> = emptyList(),
+    val folderIndex: Int = 0,
+    val sessionIndex: Int = 0,
+    val currentFolderPath: String? = null,
+    val currentSessionId: String? = null,
+)
