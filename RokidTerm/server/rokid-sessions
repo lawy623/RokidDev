@@ -87,6 +87,15 @@ first_claude_descendant() {
   done
 }
 
+# Real cwd of a process: /proc on Linux (the deployment host); lsof fallback
+# so macOS dev/test machines can exercise the same paths.
+pid_cwd() {
+  local pid="$1" c
+  c="$(readlink -f "/proc/$pid/cwd" 2>/dev/null)"
+  [ -n "$c" ] || c="$(lsof -a -p "$pid" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p')"
+  printf '%s' "$c"
+}
+
 list_base() {
   local base="$1" bname enc
   bname="$(cd "$base" 2>/dev/null && pwd -P)" || return 0
@@ -133,7 +142,7 @@ cmd_status() {
   [ -n "$pane_pid" ] || { echo "none"; return 0; }
   claude_pid="$(first_claude_descendant "$pane_pid")"
   [ -n "$claude_pid" ] || { echo "none"; return 0; }
-  cwd="$(readlink -f "/proc/$claude_pid/cwd" 2>/dev/null || true)"
+  cwd="$(pid_cwd "$claude_pid")"
   [ -n "$cwd" ] || { echo "none"; return 0; }
   enc="$(encode "$cwd")"
   newest="$(newest_session_id "$enc")"
@@ -208,7 +217,7 @@ cmd_switch() {
     [ -n "$pane_pid2" ] || break
     claude_pid2="$(first_claude_descendant "$pane_pid2")"
     if [ -n "$claude_pid2" ]; then
-      cwd2="$(readlink -f "/proc/$claude_pid2/cwd" 2>/dev/null || true)"
+      cwd2="$(pid_cwd "$claude_pid2")"
       if [ "$cwd2" = "$dir_resolved" ]; then
         ok="$claude_pid2"
         break
@@ -259,7 +268,7 @@ cmd_delete() {
   if [ -n "$pane_pid" ]; then
     claude_pid="$(first_claude_descendant "$pane_pid")"
     if [ -n "$claude_pid" ]; then
-      cwd="$(readlink -f "/proc/$claude_pid/cwd" 2>/dev/null || true)"
+      cwd="$(pid_cwd "$claude_pid")"
       if [ "$cwd" = "$dir_resolved" ]; then
         newest="$(newest_session_id "$enc")"
         if [ "$newest" = "$id" ]; then
