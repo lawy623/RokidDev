@@ -317,10 +317,12 @@ class MainActivity : Activity() {
      * reaches the app, so their ordered system broadcasts are the only signal.
      */
     private fun handleSystemKeyAction(action: Int) {
-        // Strict isolation: while the conversation picker is open, both the
-        // long-press and shutter broadcasts are consumed with no action
-        // (no ctrl+c, no ESC, no shutter handling).
-        if (sessionPicker.open) return
+        if (sessionPicker.open) {
+            // Strict isolation: only the long-press broadcast acts (delete
+            // selector arm); the Shutter broadcast is consumed.
+            if (action == ACTION_LONG_PRESS) sessionPickerArmDelete()
+            return
+        }
         when (action) {
             ACTION_LONG_PRESS -> {
                 if (mode == Mode.COMPOSER) {
@@ -1268,33 +1270,52 @@ class MainActivity : Activity() {
     }
 
     private fun handleSessionPickerKey(keyCode: Int, event: KeyEvent): Boolean = when (keyCode) {
-        KeyEvent.KEYCODE_2, KeyEvent.KEYCODE_5 -> {
+        KeyEvent.KEYCODE_HOME, KeyEvent.KEYCODE_MOVE_HOME -> {
+            // Ring touchpad long press: arm the delete selector.
+            if (event.repeatCount == 0) sessionPickerArmDelete()
+            true
+        }
+        KeyEvent.KEYCODE_3 -> {
+            // COIDEA spare key: arm the delete selector.
+            if (event.repeatCount == 0) sessionPickerArmDelete()
+            true
+        }
+        KeyEvent.KEYCODE_2, KeyEvent.KEYCODE_5,
+        KeyEvent.KEYCODE_4, KeyEvent.KEYCODE_6 -> {
             if (event.repeatCount == 0) {
-                sessionPickerMove(if (keyCode == KeyEvent.KEYCODE_2) -1 else 1)
+                if (sessionPicker.deleteArmed) {
+                    // Armed: COIDEA 4/6 (and 2/5) move the 取消/删除 selector.
+                    sessionPickerMoveDeleteOption(if (keyCode == KeyEvent.KEYCODE_4 || keyCode == KeyEvent.KEYCODE_2) -1 else 1)
+                } else if (keyCode == KeyEvent.KEYCODE_2 || keyCode == KeyEvent.KEYCODE_5) {
+                    sessionPickerMove(if (keyCode == KeyEvent.KEYCODE_2) -1 else 1)
+                }
             }
             true
         }
-        KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN -> {
-            if (event.repeatCount == 0) {
-                sessionPickerMove(if (keyCode == KeyEvent.KEYCODE_DPAD_UP) -1 else 1)
-            }
-            true
-        }
+        KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN,
         KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> {
             if (event.repeatCount == 0) {
-                // Ring right-swipe arrives as DPAD_LEFT (inverted) = next.
-                val ring = isRingEvent(event)
-                val next = if (ring) keyCode == KeyEvent.KEYCODE_DPAD_LEFT
-                else keyCode == KeyEvent.KEYCODE_DPAD_RIGHT
-                sessionPickerMove(if (next) 1 else -1)
+                if (sessionPicker.deleteArmed) {
+                    // Armed: any swipe moves the selector (right/down = 删除).
+                    val ring = isRingEvent(event)
+                    val next = when {
+                        keyCode == KeyEvent.KEYCODE_DPAD_DOWN || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT -> true
+                        ring -> keyCode == KeyEvent.KEYCODE_DPAD_LEFT // ring right-swipe arrival
+                        else -> false
+                    }
+                    sessionPickerMoveDeleteOption(if (next) 1 else -1)
+                } else {
+                    sessionPickerMove(if (keyCode == KeyEvent.KEYCODE_DPAD_UP || keyCode == KeyEvent.KEYCODE_DPAD_LEFT) -1 else 1)
+                }
             }
             true
         }
         KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_8 -> {
-            // TP/ring single = confirm after the double-tap window; a second
+            // TP single = confirm after the double-tap window; a second
             // press within the window = cancel (user contract 2026-08-07).
-            // The ring's touchpad double arrives as KEYCODE_DEL (firmware),
-            // so its ENTER never double-fires — the window only affects TP.
+            // COIDEA 8 doubles also cancel; the ring's touchpad double
+            // arrives as KEYCODE_DEL (firmware), so its ENTER never
+            // double-fires.
             if (event.repeatCount == 0) pickerPrimaryPressed()
             true
         }
@@ -1321,6 +1342,8 @@ class MainActivity : Activity() {
                 sessionIndex = sessionPicker.sessionIndex,
                 currentFolderPath = sessionPicker.currentFolderPath,
                 currentSessionId = sessionPicker.currentSessionId,
+                deleteArmed = sessionPicker.deleteArmed,
+                deleteOption = sessionPicker.deleteOption,
             ),
         )
     }
@@ -1331,10 +1354,32 @@ class MainActivity : Activity() {
         sessionPickerSyncToView()
     }
 
+    private fun sessionPickerArmDelete() {
+        if (sessionPicker.armDelete()) sessionPickerSyncToView()
+    }
+
+    private fun sessionPickerMoveDeleteOption(delta: Int) {
+        sessionPicker.moveDeleteOption(delta)
+        sessionPickerSyncToView()
+    }
+
     private fun sessionPickerConfirm() {
         pickerPrimaryPending?.let(mainHandler::removeCallbacks)
         pickerPrimaryPending = null
         if (!sessionPicker.open) return
+        if (sessionPicker.deleteArmed) {
+            if (sessionPicker.confirmDeleteOption()) {
+                val folder = sessionPicker.selectedFolder() ?: return
+                val session = folder.sessions.getOrNull(sessionPicker.sessionIndex - 1) ?: return
+                sessionPicker.disarmDelete()
+                sessionPickerSyncToView()
+                runDeleteConversation(folder.path, session.id)
+            } else {
+                sessionPicker.disarmDelete()
+                sessionPickerSyncToView()
+            }
+            return
+        }
         val target = sessionPicker.confirm()
         sessionPickerSyncToView()
         if (target == null) return // descended to the conversation level
@@ -1349,6 +1394,11 @@ class MainActivity : Activity() {
         pickerPrimaryPending?.let(mainHandler::removeCallbacks)
         pickerPrimaryPending = null
         if (!sessionPicker.open) return
+        if (sessionPicker.deleteArmed) {
+            sessionPicker.disarmDelete()
+            sessionPickerSyncToView()
+            return
+        }
         if (sessionPicker.back()) {
             sessionPickerSyncToView()
             return
@@ -1749,6 +1799,31 @@ class MainActivity : Activity() {
                         this, "切换失败", android.widget.Toast.LENGTH_SHORT,
                     ).show()
                     updateHeader()
+                }
+            }
+        }.start()
+    }
+
+    /** Deletes the transcript on the server + the local scrollback file. */
+    private fun runDeleteConversation(folderPath: String, sessionId: String) {
+        val endpoint = activeEndpoint ?: return
+        val fetcher = sessionFetcher ?: return
+        Thread {
+            val raw = fetcher.deleteConversation(endpoint.sessionName, endpoint.workspace, folderPath, sessionId)
+            val ok = raw != null && ServerSessionFetcher.parseSwitchResult(raw) != null
+            runOnUiThread {
+                if (ok) {
+                    sessionPicker.removeCurrentSession()
+                    val store = scrollbackStore
+                    if (store != null) {
+                        runCatching {
+                            store.file(endpoint.id, ServerSessionFetcher.encodeDir(folderPath), sessionId).delete()
+                        }
+                    }
+                    sessionPickerSyncToView()
+                    android.widget.Toast.makeText(this, "已删除会话", android.widget.Toast.LENGTH_SHORT).show()
+                } else {
+                    android.widget.Toast.makeText(this, "删除失败", android.widget.Toast.LENGTH_SHORT).show()
                 }
             }
         }.start()
