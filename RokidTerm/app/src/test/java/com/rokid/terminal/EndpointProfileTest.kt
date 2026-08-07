@@ -1,7 +1,6 @@
 package com.rokid.terminal
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class EndpointProfileTest {
@@ -40,12 +39,13 @@ class EndpointProfileTest {
 
     @Test
     fun `legacy remote command launches claude in the workspace`() {
-        val command = profile().legacyRemoteCommand
-
-        assertTrue(command.contains(
-            "tmux new-session -d -s cloud-claude -c '/srv/projects/my World' " +
-                "/home/rokid/bin/rokid-claude --effort max --dangerously-skip-permissions",
-        ))
-        assertTrue(command.endsWith("exec tmux attach-session -t cloud-claude"))
+        assertEquals(
+            "(tmux has-session -t cloud-claude 2>/dev/null || " +
+                "tmux new-session -d -s cloud-claude -c '/srv/projects/my World' " +
+                "/home/rokid/bin/rokid-claude --effort max --dangerously-skip-permissions) && " +
+                statusOptions +
+                "exec tmux attach-session -t cloud-claude",
+            profile().legacyRemoteCommand,
+        )
     }
 }
