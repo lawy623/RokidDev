@@ -1942,12 +1942,13 @@ class MainActivity : Activity() {
                 runCatching { legacy.delete() }
             }
         }
-        // Clear FIRST: importScrollbackText is a no-op for empty rows or
-        // while the alternate screen is active, so without an explicit clear
-        // the previous conversation's captured rows stayed in memory and
-        // browsing a new conversation showed the old one's history
-        // (user report 2026-08-08).
-        terminalOutput.clearScrollback()
+        // Reset FIRST: importScrollbackText is a no-op while the alternate
+        // screen is active, and after a respawn the screen still carries the
+        // PREVIOUS conversation's alt state — without a reset the resumed
+        // conversation's persisted history could not be imported and
+        // browsing was empty (user report 2026-08-08). reset() clears the
+        // scrollback AND the alt flag; the new Claude redraws the screen.
+        publishTerminalFrame(terminalOutput.reset())
         terminalOutput.importScrollbackText(rows)
         // Input history is per-conversation too (user 2026-08-08): each
         // conversation owns its drafts; switching rebinds the cache.
