@@ -2269,7 +2269,11 @@ Add to `main()`:
 ```
 
 Add `cmd_delete` (reuses the same validation discipline as `cmd_switch`;
-refuses the ACTIVE session — the running Claude's current conversation):
+refuses the ACTIVE session — the running Claude's current conversation).
+NOTE (fix round 2026-08-08): the cwd lookups in cmd_status/cmd_switch/
+cmd_delete use a shared `pid_cwd` helper (readlink `/proc/<pid>/cwd`
+first — Linux unchanged — with an `lsof` fallback for platforms without
+/proc, which kept the active-session refusal dead on macOS):
 
 ```bash
 cmd_delete() {
@@ -2295,7 +2299,7 @@ cmd_delete() {
   if [ -n "$pane_pid" ]; then
     claude_pid="$(first_claude_descendant "$pane_pid")"
     if [ -n "$claude_pid" ]; then
-      cwd="$(readlink -f "/proc/$claude_pid/cwd" 2>/dev/null || true)"
+      cwd="$(pid_cwd "$claude_pid")"
       if [ "$cwd" = "$dir_resolved" ]; then
         newest="$(newest_session_id "$enc")"
         if [ "$newest" = "$id" ]; then
@@ -2317,7 +2321,11 @@ cmd_delete() {
 fixture): create a session JSONL for a NON-active id, `delete` it → `ok`
 and the file is gone; delete again → `error\tnot found`; delete with a bad
 id → `error\tbad session id`; delete a path outside the base → `error\tpath
-outside base`.
+outside base`. ACTIVE-session fixture (tmux + `exec -a claude sleep 100` in
+a pane with cwd == the base; `touch` the staged JSONL so it is the newest):
+delete the newest → `error\tactive session`; delete an idle session → `ok`
+(the refusal must actually fire — on macOS without /proc the check was dead
+code until the pid_cwd fallback landed).
 
 - [ ] **Step 3: Commit**
 
