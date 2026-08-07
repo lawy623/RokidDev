@@ -2225,6 +2225,7 @@ class MainActivity : Activity() {
         val rows = terminalOutput.exportScrollbackText()
         store.write(store.file(endpoint.id, folderKey, sessionId), rows)
         store.prune(endpoint.id)
+        InputHistory.prune(filesDir)
     }
 
     private fun loadScrollback(): List<String> {

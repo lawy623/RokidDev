@@ -126,6 +126,20 @@ class InputHistory(filesDir: File, key: String? = null) {
 
     companion object {
         private const val MAX_ENTRIES = 50
+        private const val MAX_FILES = 30
         fun sanitize(value: String): String = value.replace(Regex("[^A-Za-z0-9_.-]"), "_")
+
+        /**
+         * Deletes the oldest per-conversation input-history files beyond
+         * MAX_FILES (same LRU bound as the scrollback files; user storage
+         * question 2026-08-08). Called alongside the scrollback prune.
+         */
+        fun prune(filesDir: File) {
+            val files = filesDir.listFiles { f -> f.isFile && f.name.startsWith("input_history_") }
+                ?.sortedBy { it.lastModified() }
+                ?: return
+            val overflow = files.size - MAX_FILES
+            if (overflow > 0) files.take(overflow).forEach { runCatching { it.delete() } }
+        }
     }
 }
