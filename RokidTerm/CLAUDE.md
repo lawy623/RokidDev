@@ -49,7 +49,7 @@ Verified on the current glasses and Tencent Cloud server:
 - The remote launcher is `/home/rokid/bin/rokid-claude`; it uses the `rokid` user's independent DeepSeek credential. New Claude processes intentionally start with `--dangerously-skip-permissions` at the user's request.
 - New Claude processes start with `--effort max`. The app creates a missing tmux session in detached mode, but an existing session is attached without relaunching Claude and therefore keeps its current effort until `/effort max` is run or the session is restarted. The wrapper must pass through CLI arguments.
 - The display uses a dynamically sized VT screen grid rather than an appended log tail. The current 480x640 view resolves to 54 columns x 36 rows (grid derived from the actual View size; verified on device via the frame trace, 2026-08-06).
-- A first local input composer is implemented with Unicode-grapheme editing, local cursor movement, keyboard insertion, Backspace deletion, explicit send/cancel gestures, and a live-terminal overlay. Native Android `SpeechRecognizer` is not available on this firmware, so functional voice dictation is still not implemented. The standalone-glasses overlay is compact (about five wrapped draft lines at 480x640), shows a proportional vertical scrollbar for longer drafts, and scrolls only as needed to keep the grapheme-aware cursor visible.
+- A first local input composer is implemented with Unicode-grapheme editing, local cursor movement, keyboard insertion, Backspace deletion, explicit send/cancel gestures, and a live-terminal overlay. Native Android `SpeechRecognizer` is not available on this firmware — voice dictation goes through the SERVER-side SenseVoice path instead (record → transcribe via `asr-fwd` → draft → send, hardware-verified 2026-08-05; see `rules/voice.md`). The standalone-glasses overlay is compact (about five wrapped draft lines at 480x640), shows a proportional vertical scrollbar for longer drafts, and scrolls only as needed to keep the grapheme-aware cursor visible.
 - Idle terminal directions now browse bounded local scrollback: left/up = older, right/down = newer. They no longer emit PTY arrow sequences. Hardware-verified 2026-08-05: TP swipes emit DPAD pairs (`LEFT+UP`/`RIGHT+DOWN`); the app's LEFT/UP→older, RIGHT/DOWN→newer mapping keeps direction correct (scroll amount varies with stray keys).
 - Speech input is verified end-to-end on hardware (2026-08-05): record →
   transcribe (server SenseVoice via the `asr-fwd` channel) → draft → send.
@@ -105,8 +105,8 @@ Verified on the current glasses and Tencent Cloud server:
   recording, double = send), right knob = cancel (terminal: press = Back;
   composer: single = cancel).
 - Composer-mode Shutter double press = command palette trigger (bound as a
-  placeholder Toast; palette not implemented; first press still deletes
-  immediately).
+  placeholder Toast first, then the real palette the same day; first press
+  still deletes immediately).
 - Endpoint list masks IPv4 middle octets and hides the port for
   screen-recording safety (`user@43.xx.xx.209`).
 

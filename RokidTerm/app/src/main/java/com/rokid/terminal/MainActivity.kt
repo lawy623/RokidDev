@@ -396,7 +396,7 @@ class MainActivity : Activity() {
                 if (mode == Mode.COMPOSER) {
                     // Single press = immediate grapheme delete (never part of
                     // an arbitration window, contract); a second press within
-                    // 500 ms = command palette (placeholder, not implemented).
+                    // 500 ms = command palette (implemented 2026-08-06).
                     handleComposerShutterPress()
                 } else if (!panelMode) {
                     // Terminal mode: single press = ctrl+c to the PTY,

@@ -95,5 +95,6 @@ FastAPI + SenseVoiceSmall 的服务端语音识别，作为 RokidTerm 组件维�
 
 ## 已知限制 / 待办
 
-- 会话恢复（`claude --resume` 会话列表选择）未实现。
+- 会话恢复已实现（2026-08-07）：连接时 / 会话内两层对话选择器，基于服务端
+  `rokid-sessions` helper（list/status/switch/delete/export）+ 每会话滚动历史。
 - 发布前：恢复 `FLAG_SECURE`、release 清理、移除调试路径。
