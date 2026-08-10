@@ -358,13 +358,15 @@ Verified on the current glasses and Tencent Cloud server:
   `rokid-sessions` helper, per-conversation scrollback keying, sync
   watcher); design doc: `.superpowers/sdd/2026-08-07-multi-conversation/`,
   plan docs in the same directory.
-- ~~**Claude interactive panels with input fields**~~ — **implemented
-  2026-08-10** (AskUserQuestion detection + bottom overlay + Type-something
-  composer sub-state; contract `rules/input.md` Part 5, spec
+- ~~**Claude interactive panels with input fields**~~ — **implemented and
+  hardware-verified 2026-08-10** (AskUserQuestion: single-select,
+  checkbox multi-select, and the TAB zone form; contract
+  `rules/input.md` Part 5, spec
   `docs/superpowers/specs/2026-08-10-interactive-panel-design.md`).
-  On-device verification pending (user to test the 4-scenario input
-  matrix); other AskUserQuestion layout variants (if any) are handled per
-  real case.
+  Verified on-device: single select, multi select (incl. consecutive
+  rounds), Type-something free text (digit protocol), long drafts.
+  Other AskUserQuestion layout variants (if any) are handled per real
+  case.
 - **Concurrent sessions (option B)** — each conversation gets its OWN tmux
   session + Claude process; switching re-attaches instead of
   kill+respawn, so a long-running task keeps executing while the user
