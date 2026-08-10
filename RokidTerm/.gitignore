@@ -6,3 +6,6 @@ local.properties
 *.pem
 *.key
 .idea/
+# Local-only credentials (asr-fwd-key, asr-fwd-key.pub, …). Extension-less
+# key files are NOT covered by the *.key rules above — never track this dir.
+keys/
