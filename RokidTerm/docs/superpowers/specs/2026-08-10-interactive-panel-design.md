@@ -5,7 +5,7 @@
 
 ## 目标
 
-当远程 Claude Code 在对话中弹出 **AskUserQuestion 工具面板**（选项列表 + 自由输入入口）时，App 自动识别并把选项组装成一个可交互的底部 overlay 面板，交互方式沿用现有 command panel（/effort、/model）的成熟模式：滑动导航、确认、取消，外加 `Type something.` / `Chat about this` 项确认后唤出 composer 自由输入。
+当远程 Claude Code 在对话中弹出 **AskUserQuestion 工具面板**（选项列表 + 自由输入入口，单选或多选）时，App 自动识别并进入 panel 交互（嵌入式，无 overlay——面板由 Claude 渲染在终端里，与 command panel 一致；用户 2026-08-10 决定去掉独立框）。交互沿用现有 command panel 的成熟模式：滑动导航、确认，外加 `Type something.` 唤出 composer 自由输入。**多选形态**（选项带 `[ ]`/`[x]` 复选框）：单击切换勾选（空格）、长按/双击提交（Enter）。
 
 现状：交互面板出现时 App **不会进入 panelMode**（只在发送 `/` 命令后进入），方向键被历史浏览消费，面板完全无法操作（用户 2026-08-10："确实不行"）。
 
@@ -44,7 +44,7 @@ AskUserQuestion 面板在终端中的渲染（54×36 网格，输入行回显选
 
 ## 模式与状态流
 
-交互面板模式 = 现有 panelMode 的**变体** `askPanelMode`（复用 panel 的按键矩阵、严格隔离、回复信号自动退出），新增：overlay 渲染 + Type-something 子状态。
+交互面板模式 = 现有 panelMode 的**变体** `askPanelMode`（复用 panel 的按键矩阵、严格隔离、回复信号自动退出），新增：Type-something 子状态 + 多选勾选（面板本身嵌入式渲染，无 overlay）。
 
 ```
 [终端] detectAskPanel 连续 2 帧命中 → askPanelMode（panelMode=true + askPanel=true）
@@ -67,30 +67,32 @@ AskUserQuestion 面板在终端中的渲染（54×36 网格，输入行回显选
 
 - composer 是面板的**子状态**：composer 打开时 panelMode 保持 true（现有互斥需放开：仅 askPanelMode 允许 composer 在面板下打开）
 - composer 取消时**必须发 ESC**：Claude 面板从输入态退回选项选择（真机验证点；若面板已关，ESC 落在输入行无害）
-- 面板消失（帮助行不再出现，输入行恢复裸 `❯ `）→ overlay 自动收起
+- 面板消失（帮助行不再出现，输入行恢复裸 `❯ `）→ 面板模式自动退出
 
-## Overlay 渲染（TerminalView）
+## 嵌入式面板（无 overlay 渲染——用户 2026-08-10）
 
 - 位置：屏幕底部（composer 位置），解析选项块渲染为列表
 - 解析：输入行**下方**区域——`\d+\. ` 行 = 选项标题，后续缩进行 = 副标题（跨行合并，标题行截断到格子宽）；`Type something.`、`Chat about this` 作为普通列表项
 - 选中项高亮：复用命令面板列表视觉（`drawCommandPaletteList` 的选中样式）；**高亮每帧从输入行文本（`❯ N. 标题`）镜像校正**——本地与 Claude 永远一致
 - 底部提示（英文，UI 语言约定）：`SELECT CONFIRM · TYPE → COMPOSER · ESC CANCEL`
-- 面板状态变化（帮助行消失）→ 收起 overlay
+- 面板状态变化（帮助行消失）→ 退出 askPanelMode
 
 ## 按键矩阵（复用 command panel，追加两行）
 
 | 动作 | Rokid TP | COIDEA | Ring4 |
 |---|---|---|---|
-| 上下导航 | 上下滑动（发 PTY 方向键） | 键 2/5 | 触控板左右滑（右=下） |
-| 确认 | 长按 | **左旋钮双击**（单击 no-op——最终确认需明确双击，用户 2026-08-10） | 触控板长按 |
+| 上下导航（ask 面板恒为垂直，快滑对去重） | 上下滑动（发 PTY 方向键） | 键 2/5 | 触控板上下滑 |
+| 确认（单选 Enter / 多选提交 Enter） | 长按 | **左旋钮双击**（单击 no-op——最终确认需明确双击，用户 2026-08-10） | 触控板长按 |
+| **多选勾选/取消（空格）** | **单击**（普通选项；Type something./Chat about this 不参与） | **左旋钮单击** | **触控板单击** |
 | 取消面板 | ❌ 不可取消（2026-08-10 用户决定，三设备取消键均为 no-op） | 同左 | 同左 |
 | **Type-something 确认** | 长按（同确认） | **左旋钮单击**（中间步骤非最终选择，保持单击） | 触控板长按 |
+| **Chat about this** | 直接发送（Enter）引发下一轮，不弹 composer（用户 2026-08-10） | 同左 | 同左 |
 | composer 发送 | TP 长按 | 左旋钮双击 | 触控板长按 |
 | composer 取消→回面板 | TP 双击 | 右旋钮单击 | GO 双击 |
 
 ## 边界与异常
 
-- **半帧误判**：连续 2 帧命中才触发；触发后确认模式已进入（overlay 出现）才发键
+- **半帧误判**：连续 2 帧命中才触发；触发后确认模式已进入才发键
 - **面板中途渲染变化**：选项块以帮助行为锚重新解析；帮助行消失 = 面板结束
 - **composer 取消后 ESC 的副作用**：真机验证（面板输入态退回 vs 已关闭）；ESC 在两种状态均无害（面板整体不可取消的规则只针对 askPanelMode 下的取消键，composer 子状态的取消仍需 ESC 回选项选择）
 - **切换会话/断连**：askPanelMode 随连接状态重置（连接断开即退出）
@@ -100,9 +102,9 @@ AskUserQuestion 面板在终端中的渲染（54×36 网格，输入行回显选
 
 - JVM 单测：`detectAskPanel`（真机帧样本：正例 3 种布局变体、负例 /effort 面板、普通对话）、选项解析（含跨行副标题、Type something. 位置）
 - 真机验证清单：
-  1. Claude 弹出 AskUserQuestion → overlay 自动出现，选项齐全
+  1. Claude 弹出 AskUserQuestion（单选/多选）→ 自动进入面板交互（无 overlay），选项齐全
   2. 滑动切换 → 高亮跟随（镜像输入行）
-  3. 确认普通选项 → Claude 收到选择并回复 → overlay 自动退出
+  3. 确认普通选项（单选 Enter / 多选先勾选再 Enter）→ Claude 收到选择并回复 → 自动退出
   4. 确认 Type something. → composer 打开 → 输入发送 → Claude 收到文本
   5. composer 取消 → 回面板 → 可继续选其他选项
   6. 长文本输入（paste-burst 回归）

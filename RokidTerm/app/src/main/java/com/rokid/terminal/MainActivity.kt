@@ -394,8 +394,12 @@ class MainActivity : Activity() {
                 if (mode == Mode.COMPOSER) {
                     sendComposer()
                 } else if (panelMode) {
-                    // Part 3: TP long press = confirm (Enter).
-                    if (sshState == "CONNECTED") ssh.sendEnter()
+                    // Part 3: TP long press = confirm. Routed through
+                    // panelConfirm so AskUserQuestion multi-select/tab
+                    // panels get their submit sequence (2026-08-10) — a
+                    // bare Enter on those toggles/selects instead of
+                    // submitting (user report 2026-08-10).
+                    if (sshState == "CONNECTED") panelConfirm()
                 } else {
                     // Terminal mode: fill Claude's suggested next input as a
                     // preview (never sends directly). The 2026-08-06
@@ -464,7 +468,14 @@ class MainActivity : Activity() {
         // Conversation switch in flight: ALL input is locked (user
         // 2026-08-07) — ctrl+c, disconnect, ESC, GO arbitration included.
         if (switchInFlight) return true
-        if (mode != Mode.ENDPOINTS && isPrimaryKey(keyCode)) {
+        // While a command/ask panel is open in its OPTION state the primary
+        // key (TP single click = DPAD_CENTER / ENTER) must reach the
+        // panel's own handler (multi-select toggle, 2026-08-10) — the
+        // single/double/long arbitration below would swallow it. The
+        // composer sub-state (askPanelComposer) keeps the arbitration:
+        // single = record, double = cancel back to the panel, long = send
+        // (2026-08-10).
+        if (mode != Mode.ENDPOINTS && !(panelMode && mode == Mode.TERMINAL) && isPrimaryKey(keyCode)) {
             return handlePrimaryKeyDown(keyCode, event)
         }
         return when (mode) {
@@ -1216,6 +1227,39 @@ class MainActivity : Activity() {
         }
     }
 
+    /**
+     * Sends a Type-something answer (chroxy two-stage protocol, verified
+     * against AskUserQuestion's Ink Select/TextInput implementation
+     * 2026-08-10):
+     * 1. the option's DIGIT — NOT Enter — triggers Select's onSelect for
+     *    the Other entry and switches the picker into text-input mode
+     *    (Enter on Type something. would call onSubmit with an EMPTY
+     *    answer → "User Declined to answer question", user report
+     *    2026-08-10);
+     * 2. the text, then a delayed Enter submits the buffer (the delay
+     *    also keeps a trailing \r out of the paste-burst window).
+     * Nothing was sent at composer-open, so the event and the text travel
+     * together on send.
+     */
+    private fun sendTextToAskPanel(text: String) {
+        val typeNumber = askPanelTypeNumber ?: return
+        ssh.sendCharacters(typeNumber.toString())
+        // Stage 1 settle: the picker switches into its text-input mode
+        // (chroxy-verified ~150 ms).
+        mainHandler.postDelayed({
+            if (sshState != "CONNECTED") return@postDelayed
+            ssh.sendCharacters(text)
+            // Stage 2 settle: the paste-burst window must close before the
+            // submit Enter — a trailing \r arriving inside the burst
+            // window is swallowed and long drafts stay on the input line
+            // without ever submitting (user report 2026-08-10).
+            mainHandler.postDelayed(
+                { if (sshState == "CONNECTED") ssh.sendEnter() },
+                ASK_TEXT_SUBMIT_DELAY_MS,
+            )
+        }, ASK_TYPE_SWITCH_DELAY_MS)
+    }
+
     private fun sendComposer() {
         if (mode != Mode.COMPOSER) return
         if (composer.text.isBlank()) {
@@ -1235,7 +1279,10 @@ class MainActivity : Activity() {
         if (simulateSend) {
             android.widget.Toast.makeText(this, "TEST SEND OK: $text", android.widget.Toast.LENGTH_SHORT).show()
         } else {
-            sendTextWithEnter(text)
+            // AskUserQuestion Type-something: the picker-into-input Enter
+            // is sent HERE with the text (nothing was sent at composer
+            // open) — see sendTextToAskPanel (2026-08-10).
+            if (askPanelComposer) sendTextToAskPanel(text) else sendTextWithEnter(text)
             // The first message creates the server JSONL: if this chat's
             // cached row is still the "New chat" placeholder, refetch now so
             // the real title appears without exiting the terminal (bug 1
@@ -1267,6 +1314,7 @@ class MainActivity : Activity() {
         // picker; the panel overlay stays until the reply closes it
         // (2026-08-10).
         askPanelComposer = false
+        askPanelTypeNumber = null
         // Slash commands open Claude's own picker (e.g. /model): enter the
         // command panel passthrough so navigation keys reach it.
         if (text.startsWith("/")) {
@@ -1292,12 +1340,13 @@ class MainActivity : Activity() {
         android.util.Log.i("RokidTerminal", "mode -> TERMINAL (cancelComposer): $status")
         mode = Mode.TERMINAL
         terminalView.hideComposer()
-        // AskUserQuestion sub-state: cancelling the composer returns to the
-        // still-open panel — ESC takes Claude's picker out of its
-        // text-input mode back to option selection (2026-08-10).
+        // AskUserQuestion sub-state: cancelling the composer sends NO key —
+        // the panel never left its option state (the Type-something event
+        // only travels with the text on send, 2026-08-10), so returning to
+        // the panel is a pure local transition.
         if (askPanelComposer) {
             askPanelComposer = false
-            ssh.sendEscape()
+            askPanelTypeNumber = null
         }
         updateHeader()
         clearPrimaryGesture()
@@ -1557,10 +1606,12 @@ class MainActivity : Activity() {
         }
         val target = sessionPicker.confirm()
         if (target == null) {
-            // Descended: in-session switching starts on the CURRENT (▶)
-            // conversation, not the new-chat slot (user 2026-08-07). The
-            // connect flow keeps the new-chat default.
-            if (!sessionPickerConnectMode) sessionPicker.selectCurrentSession()
+            // Descended: the conversation-level selection starts on the
+            // CURRENT (▶) conversation in BOTH flows (user 2026-08-10: the
+            // connect flow previously kept the new-chat default, but the
+            // highlight must land on the current conversation for a fast
+            // resume — like the folder level does).
+            sessionPicker.selectCurrentSession()
             sessionPickerSyncToView()
             return
         }
@@ -1613,6 +1664,16 @@ class MainActivity : Activity() {
     private var askPanelComposer = false
     private var askPanelDetectStreak = 0
     private var askPanelLostStreak = 0
+    /** Multi-select AskUserQuestion ([ ] checkboxes) — single click toggles. */
+    private var askPanelMultiSelect = false
+    /** Type something.'s option number, captured at composer-open — the
+     *  DIGIT (not Enter) switches Claude's picker into text-input mode on
+     *  send (2026-08-10). */
+    private var askPanelTypeNumber: Int? = null
+    /** TAB form (help line "Tab/Arrow keys to navigate", zone bar with
+     *  ☒多选/☐自由输入/✔Submit) — Enter selects, Tab switches zones,
+     *  Submit commits (real capture 2026-08-10). */
+    private var askPanelTab = false
 
     /** Fingerprint of the screen above the input line at panel entry —
      *  Claude's reply is detected as a change from this. */
@@ -1649,6 +1710,15 @@ class MainActivity : Activity() {
                         cancelPanelMode()
                     }
                 }
+            } else {
+                // The per-frame detection can stall when the network goes
+                // quiet right after the panel renders (no further frames
+                // to accumulate the detect streak on) — poll as well so
+                // AskUserQuestion mode enters automatically, without any
+                // user key (user report 2026-08-10: TP single click opened
+                // the composer while the rendered panel was not yet in
+                // panel mode). A 1 s sighting is already stable.
+                pollAskPanelDetection()
             }
             mainHandler.postDelayed(this, PANEL_EXIT_POLL_MS)
         }
@@ -1657,6 +1727,7 @@ class MainActivity : Activity() {
     private fun enterPanelMode() {
         if (mode != Mode.TERMINAL || panelMode) return
         panelMode = true
+        terminalView.setPanelActive(true)
         panelEntryFingerprint = terminalView.frameFingerprint()
         lastNonBarePromptNanos = System.nanoTime()
         android.util.Log.i("RokidTerminal", "mode -> PANEL (command panel passthrough)")
@@ -1668,13 +1739,29 @@ class MainActivity : Activity() {
         panelMode = false
         askPanelMode = false
         askPanelComposer = false
+        askPanelMultiSelect = false
+        askPanelTab = false
         panelLeftKnobDoublePending?.let(mainHandler::removeCallbacks)
         panelLeftKnobDoublePending = null
-        terminalView.setAskPanel(emptyList(), 0, false)
+        terminalView.setPanelActive(false)
+        terminalView.setAskPanel(emptyList(), 0)
         panelAxisSticky = null
         panelAxisCommand = null
         android.util.Log.i("RokidTerminal", "mode -> TERMINAL (panel exited)")
         updateHeader()
+    }
+
+    /**
+     * 1 s poll complement to the frame-driven detection: enters
+     * askPanelMode directly when the panel is sighted (see the
+     * panelExitRunnable comment, 2026-08-10).
+     */
+    private fun pollAskPanelDetection() {
+        val active = !sessionPicker.open && !switchInFlight &&
+            (mode == Mode.TERMINAL || askPanelComposer) && sshState == "CONNECTED"
+        if (!active) return
+        val snap = terminalView.askPanelSnapshot() ?: return
+        if (!panelMode) enterAskPanelMode(snap)
     }
 
     /**
@@ -1692,7 +1779,11 @@ class MainActivity : Activity() {
         if (snap != null) {
             askPanelLostStreak = 0
             if (panelMode) {
-                if (askPanelMode) terminalView.setAskPanel(snap.options, snap.selected, true)
+                if (askPanelMode) {
+                    askPanelMultiSelect = snap.multiSelect
+                    askPanelTab = snap.tabPanel
+                    terminalView.setAskPanel(snap.options, snap.selected)
+                }
             } else if (++askPanelDetectStreak >= ASK_PANEL_DETECT_FRAMES) {
                 enterAskPanelMode(snap)
             }
@@ -1708,9 +1799,12 @@ class MainActivity : Activity() {
         if (panelMode || mode != Mode.TERMINAL) return
         panelMode = true
         askPanelMode = true
+        askPanelMultiSelect = snap.multiSelect
+        askPanelTab = snap.tabPanel
+        terminalView.setPanelActive(true)
         panelEntryFingerprint = terminalView.frameFingerprint()
         lastNonBarePromptNanos = System.nanoTime()
-        terminalView.setAskPanel(snap.options, snap.selected, true)
+        terminalView.setAskPanel(snap.options, snap.selected)
         android.util.Log.i("RokidTerminal", "mode -> ASK PANEL (AskUserQuestion)")
         updateHeader()
     }
@@ -1735,9 +1829,36 @@ class MainActivity : Activity() {
         }
         if (askPanelMode) {
             val option = terminalView.askPanelSelectedOption()
-            if (option != null && (option.typeSomething || option.chatAbout)) {
-                ssh.sendEnter()
+            // Only Type something. opens the composer on single press —
+            // Chat about this sends directly (Enter) like a regular option
+            // (user 2026-08-10). Checked options block it (mutually
+            // exclusive, user 2026-08-10). No key is sent on open — the
+            // Type-something event travels with the text on send.
+            if (option != null && option.typeSomething) {
+                if (askPanelHasChecked()) {
+                    android.widget.Toast.makeText(
+                        this, "UNCHECK OPTIONS FIRST", android.widget.Toast.LENGTH_SHORT,
+                    ).show()
+                    return
+                }
                 openComposerFromAskPanel()
+                return
+            }
+            // Multi-select: single click TOGGLES the checkbox (space) on
+            // regular options, double click submits (user 2026-08-10).
+            if (askPanelMultiSelect && !askPanelTab && option != null && !option.chatAbout) {
+                ssh.sendCharacters(" ")
+                val single = Runnable { panelLeftKnobDoublePending = null }
+                panelLeftKnobDoublePending = single
+                mainHandler.postDelayed(single, RIGHT_KNOB_DOUBLE_WINDOW_MS)
+                return
+            }
+            // TAB form: single click SELECTS (Enter), double click submits.
+            if (askPanelTab && option != null && !option.typeSomething && !option.chatAbout) {
+                ssh.sendEnter()
+                val single = Runnable { panelLeftKnobDoublePending = null }
+                panelLeftKnobDoublePending = single
+                mainHandler.postDelayed(single, RIGHT_KNOB_DOUBLE_WINDOW_MS)
                 return
             }
         }
@@ -1747,21 +1868,63 @@ class MainActivity : Activity() {
     }
 
     /**
-     * Panel confirm. AskUserQuestion: confirming the Type something. /
-     * Chat about this entry sends Enter (Claude's picker enters its
-     * text-input mode) and opens the composer as the panel's sub-state
-     * (2026-08-10); every other confirm is a plain Enter.
+     * Panel confirm. AskUserQuestion: confirming Type something. sends
+     * Enter (Claude's picker enters its text-input mode) and opens the
+     * composer as the panel's sub-state (2026-08-10); Chat about this and
+     * every other option are plain Enters (Chat about this sends directly
+     * and starts the next round — user 2026-08-10).
+     *
+     * MULTI-SELECT: Claude's picker moves the focus to the ✔ Submit entry
+     * on the first Enter — a second Enter submits the checked options
+     * (user report 2026-08-10: a single Enter "jumped to the submit panel"
+     * and the interaction stalled).
      */
     private fun panelConfirm() {
         if (askPanelMode) {
             val option = terminalView.askPanelSelectedOption()
-            if (option != null && (option.typeSomething || option.chatAbout)) {
-                ssh.sendEnter()
+            if (option != null && option.typeSomething) {
+                if (askPanelHasChecked()) {
+                    // Type something. and checked options are mutually
+                    // exclusive (user 2026-08-10): either submit the
+                    // checked options or type a custom answer — never both.
+                    android.widget.Toast.makeText(
+                        this, "UNCHECK OPTIONS FIRST", android.widget.Toast.LENGTH_SHORT,
+                    ).show()
+                    return
+                }
+                // No key is sent while the composer is open: Claude's picker
+                // stays in its option state, so cancelling the composer
+                // returns to the choices cleanly. The Type-something event
+                // and the text travel together on SEND (2026-08-10).
                 openComposerFromAskPanel()
+                return
+            }
+            if (askPanelMultiSelect) {
+                ssh.sendEnter()
+                mainHandler.postDelayed(
+                    { if (panelMode && sshState == "CONNECTED") ssh.sendEnter() },
+                    ASK_SUBMIT_ENTER_DELAY_MS,
+                )
+                return
+            }
+            // TAB form submit: Tab moves to the ✔ Submit zone, Enter
+            // commits (help line: "Tab/Arrow keys to navigate").
+            if (askPanelTab) {
+                ssh.sendCharacters("\t")
+                mainHandler.postDelayed(
+                    { if (panelMode && sshState == "CONNECTED") ssh.sendEnter() },
+                    ASK_SUBMIT_ENTER_DELAY_MS,
+                )
                 return
             }
         }
         ssh.sendEnter()
+    }
+
+    /** True while the multi-select panel shows at least one checked [x]. */
+    private fun askPanelHasChecked(): Boolean {
+        val snap = terminalView.askPanelSnapshot() ?: return false
+        return snap.options.any { it.checked }
     }
 
     /**
@@ -1772,6 +1935,7 @@ class MainActivity : Activity() {
     private fun openComposerFromAskPanel() {
         android.util.Log.i("RokidTerminal", "mode -> COMPOSER (ask panel input)")
         askPanelComposer = true
+        askPanelTypeNumber = terminalView.askPanelSelectedOption()?.number
         publishTerminalFrame(terminalOutput.returnToLive())
         speechDraft.reset()
         composer.clear()
@@ -1814,6 +1978,33 @@ class MainActivity : Activity() {
             if (event.repeatCount == 0) sendPanelSwipe(keyCode, event)
             true
         }
+        KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
+            // AskUserQuestion single click (TP + ring touchpad): on a
+            // regular option — checkbox multi-select toggles (space), the
+            // TAB form SELECTS (Enter); on Type something. it SUMMONS the
+            // composer (cancellable, so no strong-auth long press needed —
+            // user 2026-08-10); Chat about this is never touched (it
+            // sends directly and needs the deliberate long press).
+            if (event.repeatCount == 0 && askPanelMode) {
+                val option = terminalView.askPanelSelectedOption()
+                if (option != null && !option.chatAbout) {
+                    if (option.typeSomething) {
+                        if (askPanelHasChecked()) {
+                            android.widget.Toast.makeText(
+                                this, "UNCHECK OPTIONS FIRST", android.widget.Toast.LENGTH_SHORT,
+                            ).show()
+                        } else {
+                            openComposerFromAskPanel()
+                        }
+                    } else if (askPanelMultiSelect && !askPanelTab) {
+                        ssh.sendCharacters(" ")
+                    } else {
+                        ssh.sendEnter()
+                    }
+                }
+            }
+            true
+        }
         KeyEvent.KEYCODE_8 -> {
             if (event.repeatCount == 0) handlePanelLeftKnobPress()
             true
@@ -1824,12 +2015,15 @@ class MainActivity : Activity() {
             true
         }
         KeyEvent.KEYCODE_D -> {
-            // Right knob single = cancel & return (ESC + exit). AskUserQuestion
-            // panels are NOT cancellable: they must be answered with a
-            // selection or the composer text — ESC would leave Claude's tool
-            // call in an unknown state (user decision 2026-08-10).
+            // Right knob single: TAB on the AskUserQuestion TAB form (zone
+            // switching: options ↔ free-input ↔ Submit — the panel's help
+            // line says "Tab/Arrow keys to navigate"); plain ESC+cancel
+            // on every other panel (AskUserQuestion panels are NOT
+            // cancellable, 2026-08-10).
             if (event.repeatCount == 0) {
-                if (!askPanelMode) {
+                if (askPanelMode) {
+                    ssh.sendCharacters("\t")
+                } else {
                     ssh.sendEscape()
                     cancelPanelMode()
                 }
@@ -1889,6 +2083,27 @@ class MainActivity : Activity() {
         if (panelAxisCommand != command) {
             panelAxisSticky = terminalView.pickerAxis()
             panelAxisCommand = command
+        }
+        // AskUserQuestion panels are selection-only: the swipe is ALWAYS
+        // vertical (up/down through the options) for every device — the
+        // axis-adaptive logic would otherwise flip to horizontal when a
+        // submit-style entry is on screen and the swipe starts changing the
+        // wrong thing (user report 2026-08-10).
+        if (askPanelMode) {
+            val up = keyCode == KeyEvent.KEYCODE_DPAD_UP ||
+                (ring && keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) ||
+                (!ring && keyCode == KeyEvent.KEYCODE_DPAD_LEFT)
+            // Fast swipes emit DPAD pairs within a few ms — dedup the same
+            // arrow or one swipe moves two options (user report 2026-08-10).
+            val arrow = if (up) ARROW_UP else ARROW_DOWN
+            val now = android.os.SystemClock.uptimeMillis()
+            if (event.repeatCount == 0) {
+                if (arrow == lastPanelArrow && now - lastPanelArrowTime < SWIPE_PAIR_DEDUP_MS) return
+                lastPanelArrow = arrow
+                lastPanelArrowTime = now
+                if (up) ssh.sendArrowUp() else ssh.sendArrowDown()
+            }
+            return
         }
         val axis = panelAxisSticky ?: TerminalView.PickerAxis.HORIZONTAL
         if (axis == TerminalView.PickerAxis.VERTICAL) {
@@ -2735,13 +2950,29 @@ class MainActivity : Activity() {
         private const val ASK_PANEL_DETECT_FRAMES = 2
         private const val ASK_PANEL_LOST_FRAMES = 2
 
+        /** Multi-select submit: gap between the Enter that moves the focus
+         *  to ✔ Submit and the Enter that submits (2026-08-10). */
+        private const val ASK_SUBMIT_ENTER_DELAY_MS = 250L
+
+        /** Type-something send: picker→text-input mode settle (chroxy). */
+        private const val ASK_TYPE_SWITCH_DELAY_MS = 150L
+
+        /** Type-something send: text→submit-Enter gap — the paste-burst
+         *  window must close or a long draft's trailing \r is swallowed
+         *  and the draft stays on the input line (user 2026-08-10). */
+        private const val ASK_TEXT_SUBMIT_DELAY_MS = 800L
+
         /**
          * Drafts at or above this length go text-first, Enter separately —
          * Claude Code's paste-burst detector swallows a trailing \r that
          * arrives in the same read (2026-08-07).
          */
         private const val LONG_SEND_CHARS = 80
-        private const val SEND_ENTER_DELAY_MS = 300L
+        // 800 ms, not 300: the paste-burst window grows with the draft
+        // length — a 300 ms \r was still inside the window for longer
+        // drafts and they stayed on the input line unsubmitted (user
+        // report 2026-08-10, normal composer sends).
+        private const val SEND_ENTER_DELAY_MS = 800L
 
         private const val ARROW_UP = "up"
         private const val ARROW_DOWN = "down"

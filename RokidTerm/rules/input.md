@@ -402,13 +402,22 @@ popped mid-conversation — NOT a `/`-command panel, so it was previously
 unreachable (no panel mode entered; arrows browsed history). Real-device
 case captured 2026-08-10 (frame dump chunk 271).
 
-**Detection (frame-driven, auto-enter):** the signature rows
-`Type something.` / `Chat about this` are AskUserQuestion-specific
-(command pickers never show them) — presence anywhere on screen + 2-frame
-streak → `askPanelMode` (panel passthrough + bottom overlay with the
-parsed option list). The selection is MIRRORED from the input-line echo
-(`❯ 1. 标题`); the overlay highlight can never diverge from Claude's.
-Exits when the panel disappears (2-frame streak) or on the reply signal.
+**Detection (auto-enter, no user key needed):** the signature rows
+`Type something` (with or without the period — multi-select renders it
+without) / `Chat about this` are AskUserQuestion-specific (command
+pickers never show them). Two complementary paths enter `askPanelMode`
+(panel passthrough):
+- per-frame detection with a 2-frame streak (guards half-frames), AND
+- a 1 s poll (`panelExitRunnable`) — the frame path can stall when the
+  network goes quiet right after the panel renders (no further frames to
+  accumulate the streak on), so the poll enters directly on a stable 1 s
+  sighting (user report 2026-08-10: TP single click opened the composer
+  while the rendered panel was not yet in panel mode).
+The panel stays EMBEDDED in the terminal exactly like the command
+panels — NO overlay, NO extra frame is drawn (user decision 2026-08-10;
+only the composer pops on Type-something confirm). The selection is
+MIRRORED from the input-line echo (`❯ 1. 标题`). Exits when the panel
+disappears (2-frame streak) or on the reply signal.
 
 **Panel structure (real case):** input line echoes the selected option;
 option rows below are numbered (`1. 标题` + grey subtitle continuation
@@ -416,19 +425,46 @@ lines); fixed entries `Type something.` (free text) and `Chat about this`;
 help line `Enter to select · ↑/↓ to navigate · Esc to cancel` (never
 sent to the user).
 
+**TWO panel forms (real cases 2026-08-10, more may appear — extend per
+real capture):**
+
+1. **Single-select** — options have NO checkbox (`1. 标题`). Confirm
+   sends Enter (the chosen option). Blinking input cursor is suppressed
+   while any command/ask panel is open (the bare input bar keeps it).
+2. **Multi-select** — options carry checkboxes (`1. [ ] 选项 A` /
+   `[x]` = checked). Single click TOGGLES the checkbox on regular options
+   (sends space); confirm (long press / left-knob double) sends Enter and
+   submits ALL checked options (hardware-verified 2026-08-10: single
+   select, multi select and long-draft sends all work). The top bar shows
+   a `✔ Submit` entry — the app submits with Enter+Enter (the first Enter
+   moves the focus onto Submit, the second commits; a single Enter would
+   stall on the Submit zone).
+   **Type something in multi-select** (verified 2026-08-10): it renders
+   with a `[ ]` marker and CAN be selected as a regular option, then
+   submitted together with the checked options through Submit — the
+   toggle logic excludes it only while it is used as the free-text entry
+   (single click on it opens the composer instead of toggling; checked
+   options block the composer — mutually exclusive).
+
+**Swipes in ask panels are ALWAYS vertical** (up/down only) for every
+device — the axis-adaptive logic is bypassed, and the fast-swipe DPAD
+pair is deduped (one swipe = one option; user report 2026-08-10).
+
 | # | Requirement | Rokid TP | COIDEA KM | INMO Ring4 |
 |---|---|---|---|---|
-| 1 | Navigate options (arrows — mirrors the echo) | swipe (axis-adaptive, same as Part 3) | keys 2/5 (4/6 = left/right) | touchpad swipe (right = down) |
-| 2 | Confirm option (Enter) | **long press** | **left knob DOUBLE press** (`KEY_8` ×2, 500 ms; single is a no-op — final choice needs the deliberate double, user 2026-08-10) | touchpad long press |
-| 3 | Confirm `Type something.` / `Chat about this` (Enter, then the composer opens as the panel's input sub-state) | **long press** (same as #2) | **left knob SINGLE press** (intermediate step, not a final choice — single stays, user 2026-08-10) | touchpad long press (same) |
-| 4 | Composer send (submits the text to Claude's picker) | **long press** | left knob **double** press | touchpad long press |
-| 5 | Composer cancel → back to the panel (closes composer, sends ESC — Claude's picker returns to option selection) | **TP double click** | right knob single (`KEY_D`) | GO double |
-| 6 | Cancel panel | **NOT POSSIBLE (user decision 2026-08-10)** — the panel must be ANSWERED: select an option (Enter) or send composer text. ESC/cancel keys are no-ops while `askPanelMode` is active: Claude's AskUserQuestion is a tool call waiting for an answer, and cancelling would leave it in an unknown state. | same | same |
-| 7 | Auto-exit | panel gone (help line lost) or reply rendered → back to terminal | same | same |
+| 1 | Navigate options (always vertical; mirrors the echo) | up/down swipe (pair-deduped) | keys 2/5 | touchpad swipe (up/down only) |
+| 2 | Confirm option / submit multi-select (Enter) | **long press** | **left knob DOUBLE press** (`KEY_8` ×2, 500 ms; single is a no-op on single-select) | touchpad long press |
+| 3 | Multi-select toggle (space) on a regular option | **single click** | **left knob SINGLE press** | **touchpad single click** |
+| 4 | Summon the composer on `Type something.` (no key is sent at open — the panel stays in its option state; the Type-something event travels with the text on SEND, user 2026-08-10) | **single click** | **left knob SINGLE press** | **touchpad single click** |
+| 5 | `Chat about this` — sends DIRECTLY (Enter), starts the next round; never opens the composer (user 2026-08-10) | long press (same as #2) | left knob double (same) | touchpad long press |
+| 6 | Composer send (Type something: the option's DIGIT switches the picker into text-input, then text, then a delayed Enter — an initial Enter would submit an EMPTY answer = "User Declined", verified 2026-08-10) | **long press** | left knob **double** press | touchpad long press |
+| 7 | Composer cancel → back to the panel (PURE LOCAL, no key sent — the panel never left its option state, user 2026-08-10) | **TP double click** | right knob single (`KEY_D`) | GO double |
+| 8 | Cancel panel | **NOT POSSIBLE (user decision 2026-08-10)** — the panel must be ANSWERED: select/submit (Enter) or send composer text. ESC/cancel keys are no-ops while `askPanelMode` is active: Claude's AskUserQuestion is a tool call waiting for an answer, and cancelling would leave it in an unknown state. | same | same |
+| 9 | Auto-exit | panel gone (help line lost) or reply rendered → back to terminal | same | same |
 
 Header: `ASK PANEL / SELECT TYPE ESC`. Strict isolation identical to
-Part 3 (only nav/confirm/cancel keys act; the cancel keys are no-ops per
-#6). `Enter to select` help line alone does NOT trigger detection —
+Part 3 (only nav/confirm/toggle keys act; the cancel keys are no-ops per
+#8). `Enter to select` help line alone does NOT trigger detection —
 `/model`-style pickers must keep their Part 3 behavior.
 
 Back remains a secondary cancel fallback on the glasses. GO double cancels

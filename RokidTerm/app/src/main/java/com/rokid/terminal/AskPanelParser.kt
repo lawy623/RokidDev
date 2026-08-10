@@ -17,9 +17,25 @@ object AskPanelParser {
     const val TYPE_SOMETHING = "Type something."
     const val CHAT_ABOUT_THIS = "Chat about this"
     const val HELP_MARKER = "Enter to select"
+    // Multi-select panels render the entry as "Type something" (no period) —
+    // the stem matches both forms.
+    private const val TYPE_SOMETHING_STEM = "Type something"
 
     /** Parsed panel state for one frame: options + mirrored selection. */
-    data class Snapshot(val options: List<Option>, val selected: Int)
+    data class Snapshot(
+        val options: List<Option>,
+        val selected: Int,
+        /** True when the panel is multi-select (any option carries a checkbox). */
+        val multiSelect: Boolean = false,
+        /**
+         * True for the TAB form (help line "Tab/Arrow keys to navigate" +
+         * a top bar of zones like "☒ 多选 | ☐ 自由输入 | ✔ Submit"): the
+         * zones are switched with TAB, and free-text input happens in a
+         * dedicated zone — NOT the Type-something entry of the standard
+         * forms (real capture 2026-08-10).
+         */
+        val tabPanel: Boolean = false,
+    )
 
     data class Option(
         val title: String,
@@ -27,6 +43,10 @@ object AskPanelParser {
         val subtitle: String = "",
         val typeSomething: Boolean = false,
         val chatAbout: Boolean = false,
+        /** Multi-select checkbox ([ ]/[x]) — single-select panels never have it. */
+        val checkbox: Boolean = false,
+        /** Checked ([x]) — multi-select only. */
+        val checked: Boolean = false,
     )
 
     // The FIRST option's numbered row IS the input line ("❯ 1. 测试选项
@@ -36,9 +56,13 @@ object AskPanelParser {
 
     /** True when the frame shows an AskUserQuestion panel. */
     fun detect(rows: List<String>, inputLineText: String?): Boolean {
-        if (rows.any { it.contains(TYPE_SOMETHING) || it.contains(CHAT_ABOUT_THIS) }) return true
+        if (rows.any { it.contains(TYPE_SOMETHING_STEM) || it.contains(CHAT_ABOUT_THIS) }) return true
         return false
     }
+
+    /** True when the panel is the TAB form ("Tab/Arrow keys to navigate"). */
+    fun isTabPanel(rows: List<String>): Boolean =
+        rows.any { it.contains("Tab/Arrow keys to navigate") }
 
     /**
      * Parses the option block starting AT the input row (the input line
@@ -69,13 +93,19 @@ object AskPanelParser {
             if (trimmed.all { it == '─' || it == '-' || it == '=' }) continue
             if (currentNumber != null) subtitles[currentNumber]!! += trimmed
         }
-        return numbered.map { (number, title) ->
+        return numbered.map { (number, rawTitle) ->
+            // Multi-select panels render each option as "N. [ ] 标题" or
+            // "N. [x] 标题" — strip the checkbox marker and flag it.
+            val marker = Regex("^\\[([ x])\\]\\s*").find(rawTitle)
+            val title = marker?.let { rawTitle.substring(it.range.last + 1) } ?: rawTitle
             Option(
                 title = title,
                 number = number,
                 subtitle = subtitles[number]?.joinToString(" ") ?: "",
-                typeSomething = title.contains(TYPE_SOMETHING),
+                typeSomething = title.startsWith(TYPE_SOMETHING_STEM),
                 chatAbout = title.contains(CHAT_ABOUT_THIS),
+                checkbox = marker != null,
+                checked = marker != null && marker.groupValues[1] == "x",
             )
         }
     }

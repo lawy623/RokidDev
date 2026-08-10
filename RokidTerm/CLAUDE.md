@@ -314,23 +314,43 @@ Verified on the current glasses and Tencent Cloud server:
 ### Implemented 2026-08-10 (AskUserQuestion interactive panel)
 
 - Auto-detects Claude Code's AskUserQuestion picker (signature rows
-  `Type something.` / `Chat about this` — command pickers never show them)
-  and enters a panel sub-state (`askPanelMode`): panel passthrough + a
-  bottom overlay with the parsed option list (numbered rows + grey
-  subtitle continuation lines + the two fixed entries). Selection is
-  MIRRORED every frame from the input-line echo (`❯ 1. 标题`), so the
-  overlay highlight can never diverge from Claude's. Exits when the panel
-  disappears or the reply renders (existing reply-signal auto-exit).
-- Confirming `Type something.` / `Chat about this` sends Enter (Claude's
-  picker enters its text-input mode) and opens the composer as the panel's
-  sub-state; composer cancel sends ESC and returns to the panel (keep
-  choosing), composer send submits via `sendTextWithEnter` (paste-burst
-  fix applies). Header: `ASK PANEL / SELECT TYPE ESC`.
-- Pure-logic layer `AskPanelParser` (detect/parse/mirror, no Android deps)
-  with unit tests against the real device frame (6 tests).
+  `Type something` / `Chat about this` — command pickers never show them;
+  the multi-select form renders "Type something" WITHOUT the period) and
+  enters a panel sub-state (`askPanelMode`). The panel is EMBEDDED in the
+  terminal like the command panels — no overlay is drawn (user decision
+  2026-08-10; only the composer pops on Type-something confirm).
+  Selection is MIRRORED every frame from the input-line echo
+  (`❯ 1. 标题`). Auto-enter needs NO user key: the per-frame 2-frame
+  streak is complemented by a 1 s poll (the frame path can stall when the
+  network goes quiet right after the panel renders — user report
+  2026-08-10). Exits when the panel disappears or the reply renders.
+- **Two panel forms**: single-select (no checkboxes; confirm = Enter) and
+  multi-select (`[ ]`/`[x]` checkboxes — single click TOGGLES on regular
+  options via space, long press / left-knob double submits via Enter
+  (Enter+Enter: the first moves onto the ✔ Submit zone, the second
+  commits)). Type something. renders with a `[ ]` in multi-select and can
+  be selected as a REGULAR option submitted through Submit; as the
+  free-text entry (single click summons the composer) it is excluded from
+  toggling and blocks on checked options (mutually exclusive). Ask-panel
+  swipes are ALWAYS vertical with fast-swipe pair dedup (one swipe = one
+  option). Single select, multi select and long-draft sends are all
+  HARDWARE-VERIFIED (2026-08-10).
+- `Type something.` — a SINGLE click (TP / ring touchpad / left-knob
+  single) summons the composer; NO key is sent at open (the panel stays
+  in its option state, so cancelling the composer is a pure local return
+  to the choices). On SEND the picker is switched into text-input mode by
+  the option's DIGIT (an initial Enter would submit an EMPTY answer =
+  "User Declined to answer question", verified 2026-08-10), then the
+  text, then a delayed \r submits. `Chat about this` sends DIRECTLY
+  (Enter) and starts the next round — never opens the composer (user
+  2026-08-10). Cancel keys are NO-OPs while the panel is open (must be
+  answered). Header: `ASK PANEL / SELECT TYPE ESC`.
+- Pure-logic layer `AskPanelParser` (detect/parse/mirror/checkbox, no
+  Android deps) with unit tests against the real device frames (8 tests).
 - `/effort`-style command panels are untouched: the `Enter to select`
   help line alone does NOT trigger detection (AskUserQuestion rows are
-  the anchor). Contract: `rules/input.md` Part 5.
+  the anchor). Contract: `rules/input.md` Part 5. Future unknown panel
+  forms are extended per real capture (user note 2026-08-10).
 
 ### Open / pending
 

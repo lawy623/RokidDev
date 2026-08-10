@@ -116,8 +116,9 @@ class SessionPickerState {
     /**
      * Moves the conversation-level selection onto the CURRENT (▶) session
      * when it is in the selected folder; no-op (stays on the new-chat slot)
-     * otherwise. In-session switching starts on the current conversation
-     * (user 2026-08-07); the connect flow keeps the new-chat default.
+     * otherwise. Both flows (connect and in-session) start on the current
+     * conversation (user 2026-08-10 — connect previously defaulted to the
+     * new-chat slot).
      */
     fun selectCurrentSession() {
         if (!open || level != 1) return

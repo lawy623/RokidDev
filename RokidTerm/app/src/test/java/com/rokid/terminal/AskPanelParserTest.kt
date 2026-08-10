@@ -114,4 +114,44 @@ class AskPanelParserTest {
         val options = AskPanelParser.parseOptions(rows, inputRow)
         assertEquals(5, options.size) // the trailing rows are ignored
     }
+
+    // Real multi-select capture (2026-08-10): options carry [ ] checkboxes,
+    // Type something. appears WITHOUT the period, and the panel has the
+    // same help line.
+    private val multiSelectPanel = listOf(
+        "❯ 1. [ ] 选项 A",
+        "  选项一，可以和其他选项同时选中",
+        "  2. [ ] 选项 B",
+        "  3. [x] 选项 C",
+        "  5. [ ] Type something",
+        "     Submit",
+        "  6. Chat about this",
+        "Enter to select · ↑/↓ to navigate · Esc to cancel",
+    )
+
+    @Test
+    fun multiSelectPanelParsesCheckboxes() {
+        val options = AskPanelParser.parseOptions(multiSelectPanel, 0)
+        assertEquals(5, options.size)
+
+        assertTrue(options[0].checkbox)
+        assertEquals("选项 A", options[0].title)
+        assertFalse(options[0].typeSomething)
+
+        assertTrue(options[2].checkbox)
+        assertEquals("选项 C", options[2].title)
+
+        // Type something without the period still flags as the type entry
+        // (its [ ] marker is cosmetic — the toggle logic excludes it).
+        assertTrue(options[3].typeSomething)
+        assertEquals("Type something", options[3].title)
+
+        assertTrue(options[4].chatAbout)
+    }
+
+    @Test
+    fun multiSelectPanelDetectsAsAskPanel() {
+        assertTrue(AskPanelParser.detect(multiSelectPanel, "1. [ ] 选项 A"))
+        assertTrue(AskPanelParser.detect(multiSelectPanel, null))
+    }
 }
