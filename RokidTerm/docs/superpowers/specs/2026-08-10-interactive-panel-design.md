@@ -57,9 +57,12 @@ AskUserQuestion 面板在终端中的渲染（54×36 网格，输入行回显选
    │        │
    │        ├─ 长按 TP / 左旋钮双击 ──→ sendTextWithEnter（paste-burst 修复覆盖长文本）──→ 等回复自动退出
    │        │
-   │        └─ 取消（右旋钮单击 / 双击 / Back）──→ 关 composer + 发 ESC ──→ 回面板继续选
+   │        └─ 取消（TP 双击 / 右旋钮单击 / GO 双击）──→ 关 composer + 发 ESC ──→ 回面板继续选
    │
-   └─ 取消面板（TP 双击 / 右旋钮 / GO 双击）──→ 发 ESC ──→ 退出 askPanelMode
+   └─ 取消面板 ──→ ❌ 不可取消（用户决定 2026-08-10）：AskUserQuestion
+                   是工具调用，必须选择或发送输入才能退出；ESC 会使
+                   Claude 处于未知状态。取消键在 askPanel 下为 no-op。
+                   （自动退出保留：面板消失 / 收到回复）
 ```
 
 - composer 是面板的**子状态**：composer 打开时 panelMode 保持 true（现有互斥需放开：仅 askPanelMode 允许 composer 在面板下打开）
@@ -79,17 +82,17 @@ AskUserQuestion 面板在终端中的渲染（54×36 网格，输入行回显选
 | 动作 | Rokid TP | COIDEA | Ring4 |
 |---|---|---|---|
 | 上下导航 | 上下滑动（发 PTY 方向键） | 键 2/5 | 触控板左右滑（右=下） |
-| 确认 | 长按 | 左旋钮单击 | 触控板长按 |
-| 取消面板（ESC+退出） | TP 双击 / Back | 右旋钮单击 | GO 双击 |
-| **Type-something 确认** | 长按（同确认） | 左旋钮单击 | 触控板长按 |
+| 确认 | 长按 | **左旋钮双击**（单击 no-op——最终确认需明确双击，用户 2026-08-10） | 触控板长按 |
+| 取消面板 | ❌ 不可取消（2026-08-10 用户决定，三设备取消键均为 no-op） | 同左 | 同左 |
+| **Type-something 确认** | 长按（同确认） | **左旋钮单击**（中间步骤非最终选择，保持单击） | 触控板长按 |
 | composer 发送 | TP 长按 | 左旋钮双击 | 触控板长按 |
-| composer 取消→回面板 | TP 双击 / Back | 右旋钮单击 | GO 双击 |
+| composer 取消→回面板 | TP 双击 | 右旋钮单击 | GO 双击 |
 
 ## 边界与异常
 
 - **半帧误判**：连续 2 帧命中才触发；触发后确认模式已进入（overlay 出现）才发键
 - **面板中途渲染变化**：选项块以帮助行为锚重新解析；帮助行消失 = 面板结束
-- **composer 取消后 ESC 的副作用**：真机验证（面板输入态退回 vs 已关闭）；ESC 在两种状态均无害
+- **composer 取消后 ESC 的副作用**：真机验证（面板输入态退回 vs 已关闭）；ESC 在两种状态均无害（面板整体不可取消的规则只针对 askPanelMode 下的取消键，composer 子状态的取消仍需 ESC 回选项选择）
 - **切换会话/断连**：askPanelMode 随连接状态重置（连接断开即退出）
 - **普通 panelMode 不变**：/effort、/model 路径零改动，检测只识别 AskUserQuestion 特征
 

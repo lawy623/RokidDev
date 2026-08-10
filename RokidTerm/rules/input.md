@@ -265,7 +265,8 @@ implementation.
 | 4 | ctrl+c interrupt Claude | **Shutter double press** (500 ms window; swapped 2026-08-06 so the high-frequency single press is not misread as ctrl+c) | Key 3 / right knob single press (`KEY_D`, 500 ms) | GO long press (`KEY_F8`, hold >800 ms) |
 | 5 | `NEW OUTPUT` indicator | Purely visual | — | — |
 | 6 | Return to live / bottom (offset → 0, one key for both: live-with-output and quiet-bottom are the same offset-0 state) | **Shutter single press** (immediate, no arbitration delay; high-frequency action) | Key 1 | Touchpad double click (`KEY_BACKSPACE`) |
-| 7 | Back / disconnect to endpoints | TP Back (verified) | **Right knob double press** (`KEY_D` ×2, 500 ms; single = ctrl+c) | GO double click (`KEY_F8` ×2, 500 ms window) |
+| 7 | Back / disconnect to endpoints | **TP double click** (verified; the glasses' physical Back key is a system key, not a TP gesture) | **Right knob double press** (`KEY_D` ×2, 500 ms; single = ctrl+c) | GO double click (`KEY_F8` ×2, 500 ms window) |
+| 8 | Fill Claude's next-input suggestion (light text → dark preview; auto-loaded when the composer opens) | **TP long press** (restored 2026-08-10 — the 2026-08-06 ESC reassignment was not user-requested) | **Key 6** (walk to the dark suggestion slot, then open the composer with the left knob — the preview auto-loads into the draft) | **Touchpad long press** (`KEY_HOME`) |
 
 **Part 2 — composer mode:**
 
@@ -276,9 +277,9 @@ implementation.
 | 3 | Cursor movement (grapheme-level) | TP left/right swipe (verified) | Keys 2/4/5/6 = up/left/down/right | Touchpad left/right swipe |
 | 4 | Delete previous grapheme | Shutter (verified broadcast) | Key 3 | Touchpad double click (`KEY_BACKSPACE` — natural match) |
 | 5 | Send (non-empty draft, discards in-flight recording) | TP long-press (verified broadcast) | **Left knob double press** (`KEY_8` ×2, 500 ms window; single = recording) | Touchpad long press (`KEY_HOME`) — swapped with GO single 2026-08-06 so TP long = send matches the Rokid TP |
-| 6 | Cancel/discard whole draft | TP double-click / Back (verified) | **Right knob single press** (`KEY_D`; double press is a harmless second cancel) | GO double click (`KEY_F8` ×2, 500 ms window) |
+| 6 | Cancel/discard whole draft | **TP double click** (verified) | **Right knob single press** (`KEY_D`; double press is a harmless second cancel) | GO double click (`KEY_F8` ×2, 500 ms window) |
 | 7 | Command palette (trigger, implemented 2026-08-06) | **Shutter double press** (second press within 500 ms; first press still deletes immediately) | Key 1 | GO single click (`KEY_F8` short) — swapped with touchpad long 2026-08-06 |
-| 8 | Command palette (navigate / confirm / cancel) | TP up/down swipe = move, TP single click = confirm (inserts `/command` into the draft) | Keys 2/5 = move, left knob single = confirm, right knob single / Back = cancel | Touchpad left/right swipe = move (right = next), touchpad single = confirm, touchpad double = cancel |
+| 8 | Command palette (navigate / confirm / cancel) | TP up/down swipe = move, TP single click = confirm (inserts `/command` into the draft) | Keys 2/5 = move, left knob single = confirm, right knob single = cancel | Touchpad left/right swipe = move (right = next), touchpad single = confirm, touchpad double = cancel |
 
 **Part 3 — command panel mode (Claude's own picker/menu open, 2026-08-06):**
 
@@ -293,13 +294,16 @@ when the picker finishes.
 | 1 | Up / down (navigate picker) | TP up/down swipe (PTY arrows) | Keys 2 / 5 | Touchpad left/right swipe (right = down) |
 | 1b | GO double in panel | — | — | Cancel & return (ESC + exit) — F8 is routed to the GO arbitration despite the strict isolation (fixed 2026-08-06) |
 | 2 | Left / right | TP left/right swipe (PTY arrows) | Keys 4 / 6 | Touchpad left/right swipe (ring gestures corrected — right-swipe sends arrow-right) |
-| 3 | Confirm (Enter) | **TP long press** | Left knob single (`KEY_8`) | Touchpad long press (`KEY_HOME`) |
+| 3 | Confirm (Enter) | **TP long press** | **Left knob DOUBLE press** (`KEY_8` ×2, 500 ms; single is a no-op — final confirm needs the deliberate double, user 2026-08-10) | Touchpad long press (`KEY_HOME`) |
 | 4 | Cancel picker (ESC) + exit | **TP double click** | Right knob single (`KEY_D`) | GO double click (`KEY_F8` ×2, 500 ms window — consistent with the Back/cancel double in the other modes) |
-| 5 | Back (ESC + exit, same as cancel) | TP Back | Back | — |
+| 5 | Back (ESC + exit, same as cancel) | TP double click (same as #4) | Android Back (system key) | — |
 
 Bindings per user decision 2026-08-06 (Rokid: TP long = confirm / TP
 double = cancel-return; keyboard: left knob = confirm / right knob =
 cancel-return; Ring: touchpad long = confirm / GO single = cancel-return).
+Left knob confirm is a DOUBLE press since 2026-08-10 (single is a no-op) —
+final confirmations need the deliberate double, mirroring the composer's
+left-knob double = send.
 STRICT ISOLATION: while the panel is open ONLY nav/confirm/cancel act —
 all other keys (history, ctrl+c, shutter, TP single, composer, input
 history) are blocked until panel mode exits.
@@ -312,8 +316,8 @@ from the panel-entry fingerprint (2 s settle). While a numbered (vertical)
 picker is on screen the panel is HELD: `/usage`'s two-level pickers keep
 numbered rows mid-screen with a bare prompt at the bottom, so the
 bare-prompt signal alone misfired and auto-exited mid-picker (2026-08-07).
-Explicit cancel still works (TP double / right knob / GO double / Back,
-all ESC + exit). Opening the composer or reconnecting also exits panel
+Explicit cancel still works (TP double / right knob / GO double — all
+ESC + exit). Opening the composer or reconnecting also exits panel
 mode.
 
 AXIS-ADAPTIVE SWIPE (user decision 2026-08-06): the glasses/ring have a
@@ -346,12 +350,15 @@ outside the numbered list, the swipe sends the arrow back toward the list,
 so the glasses never adjust the effort slider — the keyboard can.
 
 STALE-PICKER RECOVERY: if the app restarts/reconnects while Claude has a
-picker open, panel mode is off and the picker cannot be navigated — TP
-long press now sends ESC in terminal mode (the glasses' cancel gesture;
-this firmware delivers long press as a broadcast, so KEYCODE_TV never
-fires) — ctrl+c (key 3 / Shutter double / GO long) also works. The
-suggestion fill moved to Ring long press. Re-send the command normally
-after closing the picker.
+picker open, panel mode is off and the picker cannot be navigated — the
+2026-08-06 attempt to bind TP long press to ESC for this was REVERTED
+(2026-08-10): the reassignment was not user-requested; TP long press in
+terminal mode is suggestion fill again (same as Ring long press). An
+ESC-to-PTY path stays in the codebase, unbound, for a future
+stale-picker recovery gesture (user decision 2026-08-10 — design the
+trigger only if the problem is ever hit). Meanwhile ctrl+c (key 3 /
+Shutter double / GO long) closes a stuck picker; re-send the command
+normally after.
 
 Ring4 panel swipe note (2026-08-06): the horizontal branch of the
 axis-adaptive swipe applies the ring's inverted arrivals too (left-swipe
@@ -412,17 +419,17 @@ sent to the user).
 | # | Requirement | Rokid TP | COIDEA KM | INMO Ring4 |
 |---|---|---|---|---|
 | 1 | Navigate options (arrows — mirrors the echo) | swipe (axis-adaptive, same as Part 3) | keys 2/5 (4/6 = left/right) | touchpad swipe (right = down) |
-| 2 | Confirm option (Enter) | **long press** | left knob single (`KEY_8`) | touchpad long press |
-| 3 | Confirm `Type something.` / `Chat about this` (Enter, then the composer opens as the panel's input sub-state) | **long press** (same as #2) | left knob single (same) | touchpad long press (same) |
+| 2 | Confirm option (Enter) | **long press** | **left knob DOUBLE press** (`KEY_8` ×2, 500 ms; single is a no-op — final choice needs the deliberate double, user 2026-08-10) | touchpad long press |
+| 3 | Confirm `Type something.` / `Chat about this` (Enter, then the composer opens as the panel's input sub-state) | **long press** (same as #2) | **left knob SINGLE press** (intermediate step, not a final choice — single stays, user 2026-08-10) | touchpad long press (same) |
 | 4 | Composer send (submits the text to Claude's picker) | **long press** | left knob **double** press | touchpad long press |
-| 5 | Composer cancel → back to the panel (closes composer, sends ESC — Claude's picker returns to option selection) | TP double / Back | right knob single (`KEY_D`) | GO double |
-| 6 | Cancel panel (ESC + exit) | TP double / Back | right knob single | GO double |
+| 5 | Composer cancel → back to the panel (closes composer, sends ESC — Claude's picker returns to option selection) | **TP double click** | right knob single (`KEY_D`) | GO double |
+| 6 | Cancel panel | **NOT POSSIBLE (user decision 2026-08-10)** — the panel must be ANSWERED: select an option (Enter) or send composer text. ESC/cancel keys are no-ops while `askPanelMode` is active: Claude's AskUserQuestion is a tool call waiting for an answer, and cancelling would leave it in an unknown state. | same | same |
 | 7 | Auto-exit | panel gone (help line lost) or reply rendered → back to terminal | same | same |
 
 Header: `ASK PANEL / SELECT TYPE ESC`. Strict isolation identical to
-Part 3 (only nav/confirm/cancel act). `Enter to select` help line alone
-does NOT trigger detection — `/model`-style pickers must keep their
-Part 3 behavior.
+Part 3 (only nav/confirm/cancel keys act; the cancel keys are no-ops per
+#6). `Enter to select` help line alone does NOT trigger detection —
+`/model`-style pickers must keep their Part 3 behavior.
 
 Back remains a secondary cancel fallback on the glasses. GO double cancels
 via the same F8 arbitration as Part 3; GO long and single are blocked. Back

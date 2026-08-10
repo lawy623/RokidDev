@@ -397,12 +397,13 @@ class MainActivity : Activity() {
                     // Part 3: TP long press = confirm (Enter).
                     if (sshState == "CONNECTED") ssh.sendEnter()
                 } else {
-                    // Terminal mode: send ESC — the glasses' cancel/escape
-                    // gesture (closes Claude's own pickers/menus; this
-                    // firmware delivers the long press as a broadcast, so
-                    // KEYCODE_TV never fires). The suggestion fill moved to
-                    // the ring long press (2026-08-06).
-                    if (sshState == "CONNECTED") ssh.sendEscape()
+                    // Terminal mode: fill Claude's suggested next input as a
+                    // preview (never sends directly). The 2026-08-06
+                    // reassignment to ESC was not user-requested — restored
+                    // 2026-08-10. An ESC-to-PTY path stays in the codebase
+                    // for a future stale-picker recovery gesture, currently
+                    // unbound (user decision 2026-08-10).
+                    fillSuggestion()
                 }
             }
             ACTION_SHUTTER -> {
@@ -691,8 +692,12 @@ class MainActivity : Activity() {
                         sessionPicker.open -> sessionPickerCancel()
                         mode == Mode.TERMINAL && panelMode -> {
                             // Part 3: GO double = cancel & return (ESC + exit).
-                            ssh.sendEscape()
-                            cancelPanelMode()
+                            // AskUserQuestion panels are NOT cancellable —
+                            // they must be answered (user decision 2026-08-10).
+                            if (!askPanelMode) {
+                                ssh.sendEscape()
+                                cancelPanelMode()
+                            }
                         }
                         mode == Mode.TERMINAL -> {
                             ssh.disconnect()
@@ -1663,6 +1668,8 @@ class MainActivity : Activity() {
         panelMode = false
         askPanelMode = false
         askPanelComposer = false
+        panelLeftKnobDoublePending?.let(mainHandler::removeCallbacks)
+        panelLeftKnobDoublePending = null
         terminalView.setAskPanel(emptyList(), 0, false)
         panelAxisSticky = null
         panelAxisCommand = null
@@ -1706,6 +1713,37 @@ class MainActivity : Activity() {
         terminalView.setAskPanel(snap.options, snap.selected, true)
         android.util.Log.i("RokidTerminal", "mode -> ASK PANEL (AskUserQuestion)")
         updateHeader()
+    }
+
+    /**
+     * Left knob in the panel/ask modes (user decision 2026-08-10):
+     * SINGLE press = only the AskUserQuestion type-entry confirm (Enter +
+     * composer — an intermediate step, not a final choice); on a regular
+     * option a single press is a NO-OP (final selections need the
+     * deliberate double). DOUBLE press = confirm (Enter), like TP/Ring
+     * long press.
+     */
+    private var panelLeftKnobDoublePending: Runnable? = null
+
+    private fun handlePanelLeftKnobPress() {
+        val pending = panelLeftKnobDoublePending
+        if (pending != null) {
+            mainHandler.removeCallbacks(pending)
+            panelLeftKnobDoublePending = null
+            panelConfirm()
+            return
+        }
+        if (askPanelMode) {
+            val option = terminalView.askPanelSelectedOption()
+            if (option != null && (option.typeSomething || option.chatAbout)) {
+                ssh.sendEnter()
+                openComposerFromAskPanel()
+                return
+            }
+        }
+        val single = Runnable { panelLeftKnobDoublePending = null }
+        panelLeftKnobDoublePending = single
+        mainHandler.postDelayed(single, RIGHT_KNOB_DOUBLE_WINDOW_MS)
     }
 
     /**
@@ -1777,9 +1815,7 @@ class MainActivity : Activity() {
             true
         }
         KeyEvent.KEYCODE_8 -> {
-            // Left knob single = confirm (Enter; AskUserQuestion type-entries
-            // additionally open the composer, 2026-08-10).
-            if (event.repeatCount == 0) panelConfirm()
+            if (event.repeatCount == 0) handlePanelLeftKnobPress()
             true
         }
         KeyEvent.KEYCODE_HOME, KeyEvent.KEYCODE_MOVE_HOME -> {
@@ -1788,18 +1824,26 @@ class MainActivity : Activity() {
             true
         }
         KeyEvent.KEYCODE_D -> {
-            // Right knob single = cancel & return (ESC + exit).
+            // Right knob single = cancel & return (ESC + exit). AskUserQuestion
+            // panels are NOT cancellable: they must be answered with a
+            // selection or the composer text — ESC would leave Claude's tool
+            // call in an unknown state (user decision 2026-08-10).
             if (event.repeatCount == 0) {
-                ssh.sendEscape()
-                cancelPanelMode()
+                if (!askPanelMode) {
+                    ssh.sendEscape()
+                    cancelPanelMode()
+                }
             }
             true
         }
         KeyEvent.KEYCODE_BACK -> {
             // Back = ESC to the PTY (cancel the picker) + leave panel mode.
+            // Same AskUserQuestion guard as KEYCODE_D (2026-08-10).
             if (event.repeatCount == 0) {
-                ssh.sendEscape()
-                cancelPanelMode()
+                if (!askPanelMode) {
+                    ssh.sendEscape()
+                    cancelPanelMode()
+                }
             }
             true
         }
@@ -1936,6 +1980,8 @@ class MainActivity : Activity() {
         mainHandler.removeCallbacks(primaryLongRunnable)
         pendingPrimarySingle?.let(mainHandler::removeCallbacks)
         pendingPrimarySingle = null
+        panelLeftKnobDoublePending?.let(mainHandler::removeCallbacks)
+        panelLeftKnobDoublePending = null
         pendingRightKnobSingle?.let(mainHandler::removeCallbacks)
         pendingRightKnobSingle = null
         leftKnobDoublePending?.let(mainHandler::removeCallbacks)
@@ -1976,7 +2022,12 @@ class MainActivity : Activity() {
     }
 
     private fun browseInputHistory(direction: Int) {
-        if (terminalOutput.scrollOffset > 0) return
+        if (terminalOutput.scrollOffset > 0) {
+            android.util.Log.i("RokidTerminal", "history browse: skipped (offset>0)")
+            return
+        }
+        // Diagnostics: entries size only — never draft text.
+        android.util.Log.i("RokidTerminal", "history browse: dir=$direction entries=${inputHistory.size}")
         val text = inputHistory.peek(direction)
         if (text == null) {
             // Empty entry: no overlay — the remote light suggestion shows.
@@ -2208,8 +2259,50 @@ class MainActivity : Activity() {
                     android.widget.Toast.makeText(
                         this, "Switch failed", android.widget.Toast.LENGTH_SHORT,
                     ).show()
+                    // The resume target did not exist server-side (a stale
+                    // local placeholder id): the server is still on ITS
+                    // active conversation, so reconcile the local binding
+                    // with `status` — otherwise drafts written now land in
+                    // the wrong conversation's file and leak into it later
+                    // (user report 2026-08-10: a previous conversation's
+                    // message showed up in a new chat's history recall).
+                    reconcileBindingFromStatus()
                     updateHeader()
                 }
+            }
+        }.start()
+    }
+
+    /**
+     * After a FAILED switch the server is still on ITS active conversation;
+     * the local binding must follow (with the draft cache), or drafts
+     * written now land in the wrong conversation's file (2026-08-10).
+     * Same sync as the watcher rebind, run immediately instead of waiting
+     * for the next 30 s poll.
+     */
+    private fun reconcileBindingFromStatus() {
+        val fetcher = sessionFetcher ?: return
+        val endpoint = activeEndpoint ?: return
+        Thread {
+            val status = fetcher.status(endpoint.sessionName)
+            runOnUiThread {
+                if (status == null || status.cwd == null || status.sessionId == null) return@runOnUiThread
+                val newFolderKey = ServerSessionFetcher.encodeDir(status.cwd)
+                if (newFolderKey == scrollbackFolderKey && status.sessionId == scrollbackSessionId) {
+                    return@runOnUiThread
+                }
+                persistScrollback()
+                scrollbackFolderKey = newFolderKey
+                scrollbackSessionId = status.sessionId
+                inputHistory = InputHistory(filesDir, "$scrollbackFolderKey/$scrollbackSessionId")
+                val store = scrollbackStore
+                if (store != null) {
+                    terminalOutput.importScrollbackText(
+                        store.read(store.file(endpoint.id, newFolderKey, scrollbackSessionId!!)),
+                    )
+                }
+                sessionPicker.markCurrent(status.cwd, scrollbackSessionId)
+                android.util.Log.i("RokidTerminal", "reconciled binding after failed switch")
             }
         }.start()
     }
@@ -2233,6 +2326,13 @@ class MainActivity : Activity() {
                             store.file(endpoint.id, ServerSessionFetcher.encodeDir(folderPath), sessionId).delete()
                         }
                     }
+                    // The per-conversation draft file is orphaned otherwise
+                    // (deleted sessions left input_history files behind —
+                    // user report 2026-08-10).
+                    InputHistory.deleteFile(
+                        filesDir,
+                        "${ServerSessionFetcher.encodeDir(folderPath)}/$sessionId",
+                    )
                     sessionPickerSyncToView()
                     android.widget.Toast.makeText(this, "Session deleted", android.widget.Toast.LENGTH_SHORT).show()
                 } else {
@@ -2393,6 +2493,12 @@ class MainActivity : Activity() {
         historyPreview = null
         terminalView.setHistoryPreview(null)
         inputHistory = InputHistory(filesDir, "$scrollbackFolderKey/$scrollbackSessionId")
+        // Diagnostics (never logs the session id or draft text):
+        // confirms the per-conversation history binding after each switch.
+        android.util.Log.i(
+            "RokidTerminal",
+            "bind history: folder=$scrollbackFolderKey entries=${inputHistory.size}",
+        )
     }
 
     private fun rememberTarget(folderPath: String, sessionId: String) {
@@ -2440,6 +2546,12 @@ class MainActivity : Activity() {
                 persistScrollback()
                 scrollbackFolderKey = newFolderKey
                 scrollbackSessionId = status.sessionId ?: sessionId
+                // Rebinding must include the per-conversation draft cache —
+                // otherwise drafts written after the rebind land in the OLD
+                // conversation's file and leak into it later (user report
+                // 2026-08-10: a previous conversation's message appeared in
+                // a new chat's history recall).
+                inputHistory = InputHistory(filesDir, "$scrollbackFolderKey/$scrollbackSessionId")
                 val store = scrollbackStore
                 if (store != null) {
                     terminalOutput.importScrollbackText(

@@ -36,6 +36,9 @@ RokidMusic/data/tmp/
 # Claude local settings
 .claude/settings.local.json
 
+# Superpowers SDD workspace (ledgers, task briefs, review packages — internal)
+.superpowers/
+
 # Samples (not our code)
 samples/
 

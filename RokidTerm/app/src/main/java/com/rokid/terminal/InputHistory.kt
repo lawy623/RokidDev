@@ -130,6 +130,19 @@ class InputHistory(filesDir: File, key: String? = null) {
         fun sanitize(value: String): String = value.replace(Regex("[^A-Za-z0-9_.-]"), "_")
 
         /**
+         * Deletes a conversation's history file. Called when the
+         * conversation is deleted — the delete path previously removed the
+         * scrollback file only, orphaning the drafts file (4 files left for
+         * 2 live conversations, user report 2026-08-10).
+         */
+        fun deleteFile(filesDir: File, key: String) {
+            if (key.isBlank()) return
+            runCatching {
+                File(filesDir, "input_history_${sanitize(key)}.txt").delete()
+            }
+        }
+
+        /**
          * Moves a key's history file to another key. Called when a new
          * conversation's placeholder session id converges to the server's
          * REAL id: drafts sent under the placeholder key must follow the

@@ -98,4 +98,16 @@ class InputHistoryTest {
 
         assertEquals("draft", InputHistory(dir, "-srv/k").peek(-1))
     }
+
+    @Test
+    fun deleteFileRemovesOnlyTheTargetKey() {
+        val dir = tempDir()
+        InputHistory(dir, "-srv/doomed").add("delete me")
+        InputHistory(dir, "-srv/keep").add("keep me")
+
+        InputHistory.deleteFile(dir, "-srv/doomed")
+
+        assertNull(InputHistory(dir, "-srv/doomed").peek(-1))
+        assertEquals("keep me", InputHistory(dir, "-srv/keep").peek(-1))
+    }
 }
