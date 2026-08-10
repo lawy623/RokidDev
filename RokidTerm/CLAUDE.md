@@ -365,13 +365,14 @@ Verified on the current glasses and Tencent Cloud server:
   `docs/superpowers/specs/2026-08-10-interactive-panel-design.md`).
   Verified on-device: single select, multi select (incl. consecutive
   rounds), Type-something free text (digit protocol), long drafts.
-  Other AskUserQuestion layout variants (if any) are handled per real
-  case.
+  Future AskUserQuestion layout variants are handled per real case
+  (contract notes in `rules/input.md` Part 5).
 - **Concurrent sessions (option B)** — each conversation gets its OWN tmux
   session + Claude process; switching re-attaches instead of
   kill+respawn, so a long-running task keeps executing while the user
-  works in another conversation (user decision 2026-08-07: implement after
-  the interactive-panel work above). Design notes: helper `switch` gains
+  works in another conversation (user decision 2026-08-07, confirmed
+  2026-08-10: develop later — the user works with the current
+  single-window terminal first). Design notes: helper `switch` gains
   attach semantics, unique session names per conversation, local scrollback
   binding unchanged, cap concurrent processes (~2-3) for server resources.
 - ~~Local terminal history too short / not persistent~~ — **fixed
@@ -386,10 +387,6 @@ Verified on the current glasses and Tencent Cloud server:
   helper (custom commands by file enumeration), local defaults as
   fallback. Future interaction issues are possible with untested
   pickers — handle per-command (user note 2026-08-06).
-- Panel-mode picker axis: heuristic detection (numbered rows = vertical)
-  with sticky axis + bounce; if future Claude picker layouts break the
-  heuristic, add per-command axis overrides instead of extending it
-  (user note 2026-08-06; contract in `rules/input.md` Part 3).
 - ~~Second ring device~~ — dropped 2026-08-06 (the other INMO ring does
   not power on reliably; supported external input is INMO Ring4 + COIDEA
   KM keyboard only).
