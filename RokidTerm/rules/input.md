@@ -388,6 +388,42 @@ broadcast arms the delete selector).
 | COIDEA KM | keys 2/5 | left knob (8) | right knob (D) |
 | INMO Ring4 | swipe (right-swipe arrival = next) | touchpad single | GO double |
 
+### Part 5: AskUserQuestion panel (2026-08-10)
+
+Claude Code's **AskUserQuestion** picker (option list + free-text entry)
+popped mid-conversation — NOT a `/`-command panel, so it was previously
+unreachable (no panel mode entered; arrows browsed history). Real-device
+case captured 2026-08-10 (frame dump chunk 271).
+
+**Detection (frame-driven, auto-enter):** the signature rows
+`Type something.` / `Chat about this` are AskUserQuestion-specific
+(command pickers never show them) — presence anywhere on screen + 2-frame
+streak → `askPanelMode` (panel passthrough + bottom overlay with the
+parsed option list). The selection is MIRRORED from the input-line echo
+(`❯ 1. 标题`); the overlay highlight can never diverge from Claude's.
+Exits when the panel disappears (2-frame streak) or on the reply signal.
+
+**Panel structure (real case):** input line echoes the selected option;
+option rows below are numbered (`1. 标题` + grey subtitle continuation
+lines); fixed entries `Type something.` (free text) and `Chat about this`;
+help line `Enter to select · ↑/↓ to navigate · Esc to cancel` (never
+sent to the user).
+
+| # | Requirement | Rokid TP | COIDEA KM | INMO Ring4 |
+|---|---|---|---|---|
+| 1 | Navigate options (arrows — mirrors the echo) | swipe (axis-adaptive, same as Part 3) | keys 2/5 (4/6 = left/right) | touchpad swipe (right = down) |
+| 2 | Confirm option (Enter) | **long press** | left knob single (`KEY_8`) | touchpad long press |
+| 3 | Confirm `Type something.` / `Chat about this` (Enter, then the composer opens as the panel's input sub-state) | **long press** (same as #2) | left knob single (same) | touchpad long press (same) |
+| 4 | Composer send (submits the text to Claude's picker) | **long press** | left knob **double** press | touchpad long press |
+| 5 | Composer cancel → back to the panel (closes composer, sends ESC — Claude's picker returns to option selection) | TP double / Back | right knob single (`KEY_D`) | GO double |
+| 6 | Cancel panel (ESC + exit) | TP double / Back | right knob single | GO double |
+| 7 | Auto-exit | panel gone (help line lost) or reply rendered → back to terminal | same | same |
+
+Header: `ASK PANEL / SELECT TYPE ESC`. Strict isolation identical to
+Part 3 (only nav/confirm/cancel act). `Enter to select` help line alone
+does NOT trigger detection — `/model`-style pickers must keep their
+Part 3 behavior.
+
 Back remains a secondary cancel fallback on the glasses. GO double cancels
 via the same F8 arbitration as Part 3; GO long and single are blocked. Back
 at level 1 steps up to folders; Back at level 0 closes the picker

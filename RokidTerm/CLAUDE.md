@@ -311,21 +311,40 @@ Verified on the current glasses and Tencent Cloud server:
   `InputHistory.migrate` — the placeholder-key file is renamed to the
   real-id key at convergence (never clobbers an existing target).
 
+### Implemented 2026-08-10 (AskUserQuestion interactive panel)
+
+- Auto-detects Claude Code's AskUserQuestion picker (signature rows
+  `Type something.` / `Chat about this` — command pickers never show them)
+  and enters a panel sub-state (`askPanelMode`): panel passthrough + a
+  bottom overlay with the parsed option list (numbered rows + grey
+  subtitle continuation lines + the two fixed entries). Selection is
+  MIRRORED every frame from the input-line echo (`❯ 1. 标题`), so the
+  overlay highlight can never diverge from Claude's. Exits when the panel
+  disappears or the reply renders (existing reply-signal auto-exit).
+- Confirming `Type something.` / `Chat about this` sends Enter (Claude's
+  picker enters its text-input mode) and opens the composer as the panel's
+  sub-state; composer cancel sends ESC and returns to the panel (keep
+  choosing), composer send submits via `sendTextWithEnter` (paste-burst
+  fix applies). Header: `ASK PANEL / SELECT TYPE ESC`.
+- Pure-logic layer `AskPanelParser` (detect/parse/mirror, no Android deps)
+  with unit tests against the real device frame (6 tests).
+- `/effort`-style command panels are untouched: the `Enter to select`
+  help line alone does NOT trigger detection (AskUserQuestion rows are
+  the anchor). Contract: `rules/input.md` Part 5.
+
 ### Open / pending
 
 - **Session resume support** — implemented 2026-08-07 (conversation picker,
   `rokid-sessions` helper, per-conversation scrollback keying, sync
   watcher); design doc: `.superpowers/sdd/2026-08-07-multi-conversation/`,
   plan docs in the same directory.
-- **Claude interactive panels with input fields** — **PRIORITY NEXT (user
-  2026-08-07: "确实不行，这个要优先解决")**. Panels that combine a list
-  with a text input (e.g. the option panels Claude Code shows for choosing
-  an implementation approach) do NOT work — a real case was hit on-device
-  (2026-08-07). Before designing, capture the actual panel rendering
-  (frame dump + scrollback capture) and the exact failure (which nav keys
-  do what, where input focus sits). Design the interaction (list nav +
-  input focus) from the real case, per the interactive-panel design notes
-  in `rules/input.md` Part 3.
+- ~~**Claude interactive panels with input fields**~~ — **implemented
+  2026-08-10** (AskUserQuestion detection + bottom overlay + Type-something
+  composer sub-state; contract `rules/input.md` Part 5, spec
+  `docs/superpowers/specs/2026-08-10-interactive-panel-design.md`).
+  On-device verification pending (user to test the 4-scenario input
+  matrix); other AskUserQuestion layout variants (if any) are handled per
+  real case.
 - **Concurrent sessions (option B)** — each conversation gets its OWN tmux
   session + Claude process; switching re-attaches instead of
   kill+respawn, so a long-running task keeps executing while the user

@@ -163,6 +163,7 @@ class MainActivity : Activity() {
             lastSuggestion = suggestion
             inputHistory.setSuggestion(suggestion)
         }
+        updateAskPanelState()
         // Panel-mode auto-exit runs on its own poller (panelExitRunnable,
         // reply-signal design 2026-08-07): it exits when Claude's reply has
         // rendered and holds while a numbered picker is on screen.
@@ -1257,6 +1258,10 @@ class MainActivity : Activity() {
         android.util.Log.i("RokidTerminal", "mode -> TERMINAL (sendComposer)")
         mode = Mode.TERMINAL
         terminalView.hideComposer()
+        // AskUserQuestion sub-state: the text was submitted to Claude's
+        // picker; the panel overlay stays until the reply closes it
+        // (2026-08-10).
+        askPanelComposer = false
         // Slash commands open Claude's own picker (e.g. /model): enter the
         // command panel passthrough so navigation keys reach it.
         if (text.startsWith("/")) {
@@ -1282,6 +1287,13 @@ class MainActivity : Activity() {
         android.util.Log.i("RokidTerminal", "mode -> TERMINAL (cancelComposer): $status")
         mode = Mode.TERMINAL
         terminalView.hideComposer()
+        // AskUserQuestion sub-state: cancelling the composer returns to the
+        // still-open panel — ESC takes Claude's picker out of its
+        // text-input mode back to option selection (2026-08-10).
+        if (askPanelComposer) {
+            askPanelComposer = false
+            ssh.sendEscape()
+        }
         updateHeader()
         clearPrimaryGesture()
     }
@@ -1586,6 +1598,17 @@ class MainActivity : Activity() {
 
     private var panelMode = false
 
+    /**
+     * AskUserQuestion sub-state (2026-08-10): true while the detected
+     * AskUserQuestion panel drives the panel passthrough. [askPanelComposer]
+     * is true while the composer is open as the panel's text-input
+     * sub-state (cancelling returns to the panel, sending submits).
+     */
+    private var askPanelMode = false
+    private var askPanelComposer = false
+    private var askPanelDetectStreak = 0
+    private var askPanelLostStreak = 0
+
     /** Fingerprint of the screen above the input line at panel entry —
      *  Claude's reply is detected as a change from this. */
     private var panelEntryFingerprint: String? = null
@@ -1638,10 +1661,84 @@ class MainActivity : Activity() {
     private fun cancelPanelMode() {
         if (!panelMode) return
         panelMode = false
+        askPanelMode = false
+        askPanelComposer = false
+        terminalView.setAskPanel(emptyList(), 0, false)
         panelAxisSticky = null
         panelAxisCommand = null
         android.util.Log.i("RokidTerminal", "mode -> TERMINAL (panel exited)")
         updateHeader()
+    }
+
+    /**
+     * Frame-driven AskUserQuestion state machine (2026-08-10): detects the
+     * panel via its signature rows (Type something. / Chat about this —
+     * command pickers never show them), enters the panel passthrough,
+     * mirrors the selection from the input-line echo each frame, and exits
+     * when the panel disappears. The detect/lost streaks guard against
+     * half-frames.
+     */
+    private fun updateAskPanelState() {
+        val active = !sessionPicker.open && !switchInFlight &&
+            (mode == Mode.TERMINAL || askPanelComposer) && sshState == "CONNECTED"
+        val snap = if (active) terminalView.askPanelSnapshot() else null
+        if (snap != null) {
+            askPanelLostStreak = 0
+            if (panelMode) {
+                if (askPanelMode) terminalView.setAskPanel(snap.options, snap.selected, true)
+            } else if (++askPanelDetectStreak >= ASK_PANEL_DETECT_FRAMES) {
+                enterAskPanelMode(snap)
+            }
+        } else {
+            askPanelDetectStreak = 0
+            if (askPanelMode && ++askPanelLostStreak >= ASK_PANEL_LOST_FRAMES) {
+                cancelPanelMode()
+            }
+        }
+    }
+
+    private fun enterAskPanelMode(snap: AskPanelParser.Snapshot) {
+        if (panelMode || mode != Mode.TERMINAL) return
+        panelMode = true
+        askPanelMode = true
+        panelEntryFingerprint = terminalView.frameFingerprint()
+        lastNonBarePromptNanos = System.nanoTime()
+        terminalView.setAskPanel(snap.options, snap.selected, true)
+        android.util.Log.i("RokidTerminal", "mode -> ASK PANEL (AskUserQuestion)")
+        updateHeader()
+    }
+
+    /**
+     * Panel confirm. AskUserQuestion: confirming the Type something. /
+     * Chat about this entry sends Enter (Claude's picker enters its
+     * text-input mode) and opens the composer as the panel's sub-state
+     * (2026-08-10); every other confirm is a plain Enter.
+     */
+    private fun panelConfirm() {
+        if (askPanelMode) {
+            val option = terminalView.askPanelSelectedOption()
+            if (option != null && (option.typeSomething || option.chatAbout)) {
+                ssh.sendEnter()
+                openComposerFromAskPanel()
+                return
+            }
+        }
+        ssh.sendEnter()
+    }
+
+    /**
+     * Opens the composer as an AskUserQuestion sub-state: the panel stays
+     * open underneath, cancelling the composer returns to the panel (ESC),
+     * sending submits the text (2026-08-10).
+     */
+    private fun openComposerFromAskPanel() {
+        android.util.Log.i("RokidTerminal", "mode -> COMPOSER (ask panel input)")
+        askPanelComposer = true
+        publishTerminalFrame(terminalOutput.returnToLive())
+        speechDraft.reset()
+        composer.clear()
+        mode = Mode.COMPOSER
+        refreshComposer("ASK INPUT / HOLD SEND")
     }
 
     /**
@@ -1680,13 +1777,14 @@ class MainActivity : Activity() {
             true
         }
         KeyEvent.KEYCODE_8 -> {
-            // Left knob single = confirm (Enter).
-            if (event.repeatCount == 0) ssh.sendEnter()
+            // Left knob single = confirm (Enter; AskUserQuestion type-entries
+            // additionally open the composer, 2026-08-10).
+            if (event.repeatCount == 0) panelConfirm()
             true
         }
         KeyEvent.KEYCODE_HOME, KeyEvent.KEYCODE_MOVE_HOME -> {
             // Ring touchpad long press = confirm (Enter).
-            if (event.repeatCount == 0) ssh.sendEnter()
+            if (event.repeatCount == 0) panelConfirm()
             true
         }
         KeyEvent.KEYCODE_D -> {
@@ -1817,7 +1915,8 @@ class MainActivity : Activity() {
     private fun updateHeader() {
         if (mode != Mode.TERMINAL) return
         val status = if (panelMode) {
-            "COMMAND PANEL / NAV CONFIRM CANCEL"
+            if (askPanelMode) "ASK PANEL / SELECT TYPE ESC"
+            else "COMMAND PANEL / NAV CONFIRM CANCEL"
         } else if (asrStatus.isBlank()) {
             sshState
         } else {
@@ -2519,6 +2618,10 @@ class MainActivity : Activity() {
         /** Panel auto-exit timings (reply-signal design, 2026-08-07). */
         private const val PANEL_EXIT_POLL_MS = 1_000L
         private const val PANEL_EXIT_REPLY_NANOS = 2_000L * 1_000_000L
+
+        /** AskUserQuestion enter/exit streaks (frame-driven, 2026-08-10). */
+        private const val ASK_PANEL_DETECT_FRAMES = 2
+        private const val ASK_PANEL_LOST_FRAMES = 2
 
         /**
          * Drafts at or above this length go text-first, Enter separately —

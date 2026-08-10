@@ -112,10 +112,52 @@ class TerminalView(context: Context) : View(context) {
     private var composerCursor = 0
     private var commandPaletteOpen = false
     private var commandPaletteItems: List<String> = emptyList()
+
+    /** AskUserQuestion panel overlay (real case 2026-08-10). */
+    private var askPanelVisible = false
+    private var askPanelOptions: List<AskPanelParser.Option> = emptyList()
+    private var askPanelSelected = 0
     private var commandPaletteSelected = 0
     private var sessionPickerUi = SessionPickerUi()
 
     /** Command palette state for the composer overlay (modal list). */
+    /**
+     * Drives the AskUserQuestion overlay: option list + mirrored selection.
+     * Called every frame from the activity's panel state machine.
+     */
+    fun setAskPanel(options: List<AskPanelParser.Option>, selected: Int, visible: Boolean) {
+        askPanelOptions = options
+        askPanelSelected = selected.coerceIn(0, (options.size - 1).coerceAtLeast(0))
+        askPanelVisible = visible && options.isNotEmpty()
+    }
+
+    /** True while the AskUserQuestion overlay is showing. */
+    fun askPanelOpen(): Boolean = askPanelVisible
+
+    /** The currently selected (mirrored) option, or null. */
+    fun askPanelSelectedOption(): AskPanelParser.Option? = askPanelOptions.getOrNull(askPanelSelected)
+
+    /**
+     * Frame-driven AskUserQuestion detection (2026-08-10): checks the rows
+     * for the panel's signature entries, parses the option block below the
+     * input line, and mirrors the selection from the input-line echo
+     * ("❯ 1. 标题"). Null when no panel is showing.
+     */
+    fun askPanelSnapshot(): AskPanelParser.Snapshot? {
+        val frame = terminalFrame
+        if (frame == null || frame.cells.isEmpty()) return null
+        val rows = ArrayList<String>(frame.rows)
+        for (r in 0 until frame.rows) rows.add(rowText(r))
+        if (!AskPanelParser.detect(rows, inputLineText())) return null
+        val inputRow = findInputRow() ?: return null
+        val options = AskPanelParser.parseOptions(rows, inputRow)
+        if (options.isEmpty()) return null
+        return AskPanelParser.Snapshot(
+            options = options,
+            selected = AskPanelParser.selectedIndex(rows, inputRow, options),
+        )
+    }
+
     fun setCommandPalette(items: List<String>, selected: Int, open: Boolean) {
         commandPaletteOpen = open
         commandPaletteItems = items
@@ -298,6 +340,8 @@ class TerminalView(context: Context) : View(context) {
 
         if (composerVisible) {
             drawComposer(canvas)
+        } else if (askPanelVisible) {
+            drawAskPanel(canvas)
         } else if (historyPreviewText != null) {
             drawHistoryPreview(canvas)
         } else if (blinkOn) {
@@ -810,6 +854,113 @@ class TerminalView(context: Context) : View(context) {
         canvas.drawLine(left + 10f, bottom - 60f, right - 10f, bottom - 60f, paint)
         canvas.drawText("LEFT/RIGHT CURSOR   SHUTTER DELETE", left + 12f, bottom - 36f, paint)
         canvas.drawText("HOLD SEND   DOUBLE/BACK CANCEL", left + 12f, bottom - 15f, paint)
+        resetPaint()
+    }
+
+    /**
+     * Bottom overlay for Claude Code's AskUserQuestion panel (2026-08-10):
+     * the parsed option list with the mirrored selection highlighted
+     * (title rows + grey subtitle rows), the Type something. entry opening
+     * the composer on confirm, and the hint line. Drawn instead of the
+     * terminal content area when askPanelVisible.
+     */
+    private fun drawAskPanel(canvas: Canvas) {
+        val left = 24f
+        val right = width - 24f
+        val bottom = height - TerminalSpec.FOOTER_HEIGHT - 8f
+        val availableHeight = (bottom - TerminalSpec.TERMINAL_TOP - 12f).coerceAtLeast(1f)
+        val panelHeight = min(340f, availableHeight).coerceAtLeast(240f)
+        val top = bottom - panelHeight
+
+        paint.style = Paint.Style.FILL
+        paint.color = Color.BLACK
+        paint.alpha = 246
+        canvas.drawRect(left, top, right, bottom, paint)
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 2f
+        paint.color = Color.GREEN
+        paint.alpha = 245
+        canvas.drawRect(left, top, right, bottom, paint)
+
+        resetPaint()
+        paint.isFakeBoldText = true
+        paint.textSize = 16f
+        canvas.drawText("ASK / SELECT OR TYPE", left + 12f, top + 24f, paint)
+        paint.isFakeBoldText = false
+
+        // Display rows: a title row per option plus a subtitle row when the
+        // option carries one (subtitles wrap in Claude's render; ours stay
+        // one line each).
+        val displayRows = askPanelOptions.flatMap { option ->
+            buildList {
+                add(option to false)
+                if (option.subtitle.isNotEmpty()) add(option to true)
+            }
+        }
+        val selectedDisplayStart = displayRows.indexOfFirst { it.first == askPanelOptions[askPanelSelected] }
+            .coerceAtLeast(0)
+
+        val listLeft = left + 12f
+        val listTop = top + 40f
+        val rowHeight = 22f
+        val rowWidth = right - left - 34f
+        val hintTop = bottom - 70f
+        val visible = (((hintTop - listTop) / rowHeight).toInt()).coerceAtLeast(3)
+        val windowStart = (selectedDisplayStart - visible / 2)
+            .coerceIn(0, (displayRows.size - visible).coerceAtLeast(0))
+
+        for (i in 0 until visible) {
+            val displayIndex = windowStart + i
+            if (displayIndex >= displayRows.size) break
+            val (option, isSubtitle) = displayRows[displayIndex]
+            val rowTop = listTop + i * rowHeight
+            if (option == askPanelOptions[askPanelSelected]) {
+                paint.style = Paint.Style.FILL
+                paint.color = Color.GREEN
+                paint.alpha = 90
+                canvas.drawRect(listLeft - 4f, rowTop, right - 14f, rowTop + rowHeight, paint)
+                paint.alpha = 255
+            } else {
+                paint.alpha = 230
+            }
+            paint.style = Paint.Style.FILL
+            if (isSubtitle) {
+                paint.textSize = 11f
+                paint.alpha = 170
+                val sub = if (paint.measureText(option.subtitle) > rowWidth) {
+                    option.subtitle.take(30) + "…"
+                } else option.subtitle
+                canvas.drawText(sub, listLeft + 10f, rowTop + 15f, paint)
+            } else {
+                paint.textSize = 16f
+                val title = "${option.number}. ${option.title}"
+                val text = if (paint.measureText(title) > rowWidth) {
+                    "${option.number}. " + option.title.take(11) + "…"
+                } else title
+                canvas.drawText(text, listLeft, rowTop + 17f, paint)
+            }
+        }
+
+        // Scrollbar when the list overflows the visible window.
+        if (displayRows.size > visible) {
+            val trackTop = listTop + 2f
+            val trackBottom = hintTop - 2f
+            val trackHeight = (trackBottom - trackTop).coerceAtLeast(1f)
+            val thumbHeight = (trackHeight * visible / displayRows.size).coerceIn(14f, trackHeight)
+            val maxStart = (displayRows.size - visible).coerceAtLeast(1)
+            val thumbTop = trackTop + (trackHeight - thumbHeight) * windowStart / maxStart
+            paint.style = Paint.Style.FILL
+            paint.color = Color.GREEN
+            paint.alpha = 65
+            canvas.drawRect(right - 12f, trackTop, right - 10f, trackBottom, paint)
+            paint.alpha = 210
+            canvas.drawRect(right - 13f, thumbTop, right - 9f, thumbTop + thumbHeight, paint)
+        }
+
+        paint.alpha = 175
+        paint.textSize = 11f
+        canvas.drawLine(left + 10f, bottom - 60f, right - 10f, bottom - 60f, paint)
+        canvas.drawText("SELECT CONFIRM   TYPE → COMPOSER   ESC CANCEL", left + 12f, bottom - 36f, paint)
         resetPaint()
     }
 
