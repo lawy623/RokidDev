@@ -381,28 +381,60 @@ cmd_delete() {
   else
     printf 'error\t%s\n' "path outside base"; return 1
   fi
-  local enc target
+  local enc target win
   enc="$(encode "$dir_resolved")"
   target="$PROJECTS_DIR/$enc/$id.jsonl"
-  # Refuse the running conversation (defense in depth; the app also blocks ▶).
-  local pane_pid claude_pid cwd newest
-  pane_pid="$(tmux list-panes -t "$session" -F '#{pane_pid}' 2>/dev/null | head -1)"
-  if [ -n "$pane_pid" ]; then
+  # The conversation's window (design 2026-08-11 §3.3): found by
+  # identification first (it may live under a stale name), else by name when
+  # its claude is dead. A window named rokid-<id> that is ALIVE with a
+  # different conversation is stale — it belongs to that other conversation
+  # and is never killed here (it self-heals when THAT conversation is
+  # deleted or switched).
+  win="$(find_window_for "$session" "$id")"
+  if [ -z "$win" ] && tmux list-windows -t "$session" -F '#{window_name}' 2>/dev/null | grep -qx "rokid-$id"; then
+    local pane_pid claude_pid
+    pane_pid="$(tmux list-panes -t "$session:rokid-$id" -F '#{pane_pid}' 2>/dev/null | head -1)"
     claude_pid="$(first_claude_descendant "$pane_pid")"
-    if [ -n "$claude_pid" ]; then
-      cwd="$(pid_cwd "$claude_pid")"
-      if [ "$cwd" = "$dir_resolved" ]; then
-        newest="$(newest_session_id "$enc")"
-        if [ "$newest" = "$id" ]; then
-          printf 'error\t%s\n' "active session"
-          return 1
-        fi
-      fi
+    [ -z "$claude_pid" ] && win="rokid-$id"   # dead window is the conversation's
+  fi
+  if [ -n "$win" ]; then
+    # Refuse the ATTACHED conversation (defense in depth; the app also
+    # blocks the ▶ row). Only when the window is the session's active
+    # window AND a client is attached.
+    if [ "$win" = "$(active_window "$session")" ] && session_attached "$session"; then
+      printf 'error\t%s\n' "active session"
+      return 1
     fi
+    tmux kill-window -t "$session:$win" 2>/dev/null
   fi
   [ -f "$target" ] || { printf 'error\t%s\n' "not found"; return 1; }
   rm -f "$target" || { printf 'error\t%s\n' "delete failed"; return 1; }
   printf 'ok\t%s\t%s\n' "$enc" "$id"
+}
+
+# Rename the ACTIVE window to rokid-<new-id> (design 2026-08-11 §3.4: the
+# app's new-chat discover convergence, when the server ignored --session-id
+# and generated its own real id). Guarded: only when the active window's
+# claude is alive in the given dir — a wrong target must never be renamed.
+cmd_adopt() {
+  local session="$1" dir="$2" new_id="$3"
+  case "$new_id" in
+    *[!A-Za-z0-9_-]*) printf 'error\t%s\n' "bad session id"; return 1 ;;
+  esac
+  local win pane_pid claude_pid cwd
+  win="$(active_window "$session")"
+  [ -n "$win" ] || { printf 'error\t%s\n' "no active window"; return 1; }
+  pane_pid="$(tmux list-panes -t "$session:$win" -F '#{pane_pid}' 2>/dev/null | head -1)"
+  [ -n "$pane_pid" ] || { printf 'error\t%s\n' "no tmux pane"; return 1; }
+  claude_pid="$(first_claude_descendant "$pane_pid")"
+  [ -n "$claude_pid" ] || { printf 'error\t%s\n' "no claude"; return 1; }
+  cwd="$(pid_cwd "$claude_pid")"
+  [ "$cwd" = "$dir" ] || { printf 'error\t%s\n' "cwd mismatch"; return 1; }
+  if [ "$win" != "rokid-$new_id" ]; then
+    tmux rename-window -t "$session:$win" "rokid-$new_id" 2>/dev/null \
+      || { printf 'error\t%s\n' "rename failed"; return 1; }
+  fi
+  printf 'ok\t%s\t%s\n' "$(encode "$dir")" "$new_id"
 }
 
 # Export a conversation as plain text rows for the app's local scrollback:
@@ -517,6 +549,10 @@ PYEOF
 main() {
   local verb="${1:-}"
   case "$verb" in
+    adopt)
+      [ $# -ge 4 ] || { printf 'error\t%s\n' "usage: adopt <tmux-session> <real-dir> <new-id>"; return 1; }
+      cmd_adopt "$2" "$3" "$4"
+      ;;
     delete)
       [ $# -ge 5 ] || { printf 'error\t%s\n' "usage: delete <tmux-session> <base-dir> <real-dir> <session-id>"; return 1; }
       cmd_delete "$2" "$3" "$4" "$5"

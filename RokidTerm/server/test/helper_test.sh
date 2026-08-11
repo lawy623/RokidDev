@@ -229,7 +229,7 @@ test_delete_kills_window() {
   out="$("$HELPER" delete "$SESSION" "$BASE" "$dir" "aaa111")" || return 1
   assert_eq "ok	$enc	aaa111" "$out" || return 1
   assert_eq "" "$(tmux list-windows -t "$SESSION" -F '#{window_name}' | grep 'rokid-aaa111')" || return 1
-  [ -f "$PROJECTS/$enc/aaa111.jsonl" ] && { echo "  jsonl not deleted"; return 1; }
+  [ ! -f "$PROJECTS/$enc/aaa111.jsonl" ] || { echo "  jsonl not deleted"; return 1; }
   [ -f "$PROJECTS/$enc/bbb222.jsonl" ] || { echo "  other jsonl deleted"; return 1; }
   assert_eq "bbb222" "$(run_helper_status_id)" || return 1
 }
@@ -246,7 +246,7 @@ test_delete_skips_stale_window() {
   echo '{"type":"user"}' > "$PROJECTS/$enc/aaa111.jsonl"
   "$HELPER" delete "$SESSION" "$BASE" "$dir" "aaa111" >/dev/null || return 1
   assert_eq "rokid-aaa111" "$(tmux display-message -p -t "$SESSION" '#{window_name}')" || return 1
-  [ -f "$PROJECTS/$enc/aaa111.jsonl" ] && { echo "  jsonl not deleted"; return 1; }
+  [ ! -f "$PROJECTS/$enc/aaa111.jsonl" ] || { echo "  jsonl not deleted"; return 1; }
 }
 
 # delete of the ACTIVE window while a client is attached is refused.
