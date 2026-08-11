@@ -6,8 +6,10 @@
 #   scp server/rokid-sessions <user>@<host>:/home/<user>/bin/rokid-sessions
 #   ssh <user>@<host> chmod +x /home/<user>/bin/rokid-sessions
 set -u
-PROJECTS_DIR="$HOME/.claude/projects"
-CLAUDE_LAUNCHER="/home/rokid/bin/rokid-claude"
+# Env-overridable for portability (user requirement 2026-08-11): a new server
+# can point these at its own layouts without editing the helper.
+PROJECTS_DIR="${ROKID_SESSIONS_PROJECTS_DIR:-$HOME/.claude/projects}"
+CLAUDE_LAUNCHER="${ROKID_SESSIONS_LAUNCHER:-/home/rokid/bin/rokid-claude}"
 
 encode() { printf '%s' "$1" | tr -c 'A-Za-z0-9' '-'; }
 
@@ -109,6 +111,80 @@ pid_cwd() {
   c="$(readlink -f "/proc/$pid/cwd" 2>/dev/null)"
   [ -n "$c" ] || c="$(lsof -a -p "$pid" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p')"
   printf '%s' "$c"
+}
+
+# Transcript file currently open by a claude process: /proc fd-scan on the
+# deployment host (Linux), lsof fallback for macOS test hosts. Prints the
+# conversation id (basename without .jsonl) or nothing.
+open_transcript_id() {
+  local pid="$1" t
+  if [ -d "/proc/$pid/fd" ]; then
+    t="$(for f in /proc/$pid/fd/*; do readlink "$f" 2>/dev/null; done | grep -m1 '\.jsonl$')"
+  else
+    t="$(lsof -a -p "$pid" -Fn 2>/dev/null | sed -n 's/^n//p' | grep -m1 '\.jsonl$')"
+  fi
+  [ -n "$t" ] || return 0
+  basename "$t" .jsonl
+}
+
+# The conversation id a window's claude currently runs. Primary: an open
+# transcript fd on the claude process (or any claude descendant — the
+# launcher wrapper may not exec), which is CURRENT across in-session
+# /resume. Fallback: the launch cmdline (--resume <id> / --session-id
+# <id>), which is STALE after an in-session /resume. "" when unidentified.
+window_conversation_id() {
+  local session="$1" win="$2" pane_pid id pid
+  pane_pid="$(tmux list-panes -t "$session:$win" -F '#{pane_pid}' 2>/dev/null | head -1)"
+  [ -n "$pane_pid" ] || return 0
+  for pid in $(descendants "$pane_pid"); do
+    ps -p "$pid" -o args= 2>/dev/null | grep -q '[c]laude' || continue
+    id="$(open_transcript_id "$pid")"
+    [ -n "$id" ] && { echo "$id"; return 0; }
+  done
+  local claude args
+  claude="$(first_claude_descendant "$pane_pid")"
+  [ -n "$claude" ] || return 0
+  args="$(ps -p "$claude" -o args= 2>/dev/null)"
+  id="$(printf '%s' "$args" | grep -oE -- '--(resume|session-id) [A-Za-z0-9_-]+' | head -1 | awk '{print $2}')"
+  [ -n "$id" ] && echo "$id"
+  return 0
+}
+
+# Exit 0 when the window has a live claude descendant.
+window_has_claude() {
+  local session="$1" win="$2" pane_pid
+  pane_pid="$(tmux list-panes -t "$session:$win" -F '#{pane_pid}' 2>/dev/null | head -1)"
+  [ -n "$pane_pid" ] || return 1
+  [ -n "$(first_claude_descendant "$pane_pid")" ]
+}
+
+# Name of the session's active (selected) window.
+active_window() {
+  local session="$1"
+  tmux display-message -p -t "$session" '#{window_name}' 2>/dev/null
+}
+
+# Exit 0 when the session has at least one attached client.
+session_attached() {
+  local session="$1"
+  [ -n "$(tmux list-clients -t "$session" 2>/dev/null)" ]
+}
+
+# First window whose claude currently runs conversation $2; "" when none.
+find_window_for() {
+  local session="$1" id="$2" win
+  for win in $(tmux list-windows -t "$session" -F '#{window_name}' 2>/dev/null); do
+    [ "$(window_conversation_id "$session" "$win")" = "$id" ] && { echo "$win"; return 0; }
+  done
+  return 0
+}
+
+# Cumulative CPU ticks (utime+stime) of a process; 0 when gone.
+cpu_ticks() {
+  local pid="$1" u s
+  u="$(ps -o utime= -p "$pid" 2>/dev/null | tr -d ' ')"
+  s="$(ps -o stime= -p "$pid" 2>/dev/null | tr -d ' ')"
+  echo $(( ${u:-0} + ${s:-0} ))
 }
 
 list_base() {
@@ -437,4 +513,7 @@ main() {
   esac
 }
 
-main "$@"
+# Testability hook (design 2026-08-11): sourcing with ROKID_SESSIONS_SOURCE=1
+# defines the functions without running main() — the harness
+# (server/test/helper_test.sh) exercises internals directly.
+[ "${ROKID_SESSIONS_SOURCE:-0}" = "1" ] || main "$@"

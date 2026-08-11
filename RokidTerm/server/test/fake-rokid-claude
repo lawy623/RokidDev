@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Fake /home/rokid/bin/rokid-claude for helper harness tests. The pane runs
+# this script, so its cmdline contains "claude" (findable by
+# first_claude_descendant). Env controls:
+#   ROKID_FAKE_JSONL=<path>  hold an fd open to this transcript file
+#   ROKID_FAKE_CHILD=1       spawn a sleeping child (busy-descendant signal)
+#   ROKID_FAKE_CPU=<secs>    burn that many CPU-seconds in a loop
+#   ROKID_FAKE_LOG=<path>    append one "start" line per launch
+id=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --resume) id="$2"; shift 2 ;;
+    --session-id) id="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+echo "start id=${id:-}" >> "${ROKID_FAKE_LOG:-/dev/null}"
+if [ -n "${ROKID_FAKE_JSONL:-}" ]; then exec 3>>"$ROKID_FAKE_JSONL"; fi
+if [ "${ROKID_FAKE_CHILD:-0}" = "1" ]; then sleep 300 & fi
+if [ "${ROKID_FAKE_CPU:-0}" -gt 0 ]; then
+  end=$(( $(date +%s) + ROKID_FAKE_CPU ))
+  while [ "$(date +%s)" -lt "$end" ]; do :; done
+fi
+sleep 300
