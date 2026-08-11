@@ -25,4 +25,7 @@ if [ "${ROKID_FAKE_CPU:-0}" -gt 0 ]; then
   end=$(( $(date +%s) + ROKID_FAKE_CPU ))
   while [ "$(date +%s)" -lt "$end" ]; do :; done
 fi
-sleep 300
+# Idle IN-PROCESS (no child — the helper's busy signal is child presence):
+# read blocks on the pane's pty stdin for 300 s and times out. A `sleep`
+# child would make every live fake look busy.
+read -t 300

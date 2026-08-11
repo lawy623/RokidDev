@@ -179,12 +179,24 @@ find_window_for() {
   return 0
 }
 
-# Cumulative CPU ticks (utime+stime) of a process; 0 when gone.
+# Cumulative CPU (utime+stime) of a process in HUNDREDTHS of a second;
+# 0 when gone. Linux `ps -o utime=` prints integer jiffies (1/100 s);
+# macOS prints MM:SS.cc — parse that form to centiseconds. The sweep
+# threshold works in the same unit on both platforms.
 cpu_ticks() {
   local pid="$1" u s
   u="$(ps -o utime= -p "$pid" 2>/dev/null | tr -d ' ')"
   s="$(ps -o stime= -p "$pid" 2>/dev/null | tr -d ' ')"
-  echo $(( ${u:-0} + ${s:-0} ))
+  local parse=""
+  parse() {   # MM:SS.cc -> centiseconds; plain integer passes through
+    local v="$1" mm ss cc
+    case "$v" in
+      *:*) mm="${v%%:*}"; v="${v#*:}"; ss="${v%%.*}"; cc="${v#*.}"; cc="${cc:-0}"
+           echo $(( mm * 6000 + ss * 100 + ${cc:0:2} )) ;;
+      *)    echo $(( ${v:-0} )) ;;
+    esac
+  }
+  echo $(( $(parse "$u") + $(parse "$s") ))
 }
 
 list_base() {
@@ -437,6 +449,75 @@ cmd_adopt() {
   printf 'ok\t%s\t%s\n' "$(encode "$dir")" "$new_id"
 }
 
+# Cheap idle pre-filter (design 2026-08-11 §3.6): a window is an idle
+# candidate when its claude is dead, or (JSONL old AND no descendant
+# children). Unknowns are treated as BUSY (never kill what we cannot prove
+# idle). Exit 0 = idle candidate.
+idle_fast() {
+  local session="$1" win="$2" idle_secs="$3" pane_pid claude_pid cwd id jsonl
+  pane_pid="$(tmux list-panes -t "$session:$win" -F '#{pane_pid}' 2>/dev/null | head -1)"
+  [ -n "$pane_pid" ] || return 0
+  claude_pid="$(first_claude_descendant "$pane_pid")"
+  [ -n "$claude_pid" ] || return 0
+  local pid
+  for pid in $(descendants "$claude_pid"); do
+    [ "$pid" = "$claude_pid" ] && continue
+    return 1   # child present -> busy, not even a candidate
+  done
+  cwd="$(pid_cwd "$claude_pid")"
+  id="$(window_conversation_id "$session" "$win")"
+  if [ -n "$cwd" ] && [ -n "$id" ]; then
+    jsonl="$PROJECTS_DIR/$(encode "$cwd")/$id.jsonl"
+    if [ -f "$jsonl" ]; then
+      local mtime age
+      mtime="$(stat -c %Y "$jsonl" 2>/dev/null || stat -f %m "$jsonl" 2>/dev/null)"
+      age=$(( $(date +%s) - mtime ))
+      [ "$age" -lt "$idle_secs" ] && return 1   # recently active
+    fi
+  fi
+  return 0
+}
+
+# End idle background conversations (design 2026-08-11 §3.6). Two phases so
+# the CPU sample sleeps ONCE for all candidates. The ACTIVE window is never
+# swept (the user is attached to it). Never touches JSONL — a swept
+# conversation stays in the picker and re-select respawns it via switch.
+# Output: `swept\t<count>`.
+cmd_sweep() {
+  local session="$1" base="$2" idle_min="${3:-180}"
+  local idle_secs=$(( idle_min * 60 ))
+  tmux has-session -t "$session" 2>/dev/null || { echo "swept	0"; return 0; }
+  local active win count=0
+  active="$(active_window "$session")"
+  local -a candidates=()
+  for win in $(tmux list-windows -t "$session" -F '#{window_name}' 2>/dev/null); do
+    [ "$win" = "$active" ] && continue
+    if idle_fast "$session" "$win" "$idle_secs"; then
+      candidates+=("$win")
+    fi
+  done
+  if [ ${#candidates[@]} -gt 0 ]; then
+    sleep "${SWEEP_SAMPLE_SLEEP:-120}"
+    local w t1 t2 s1 s2 wall cpus pane_pid claude_pid
+    for w in "${candidates[@]}"; do
+      pane_pid="$(tmux list-panes -t "$session:$w" -F '#{pane_pid}' 2>/dev/null | head -1)"
+      claude_pid="$(first_claude_descendant "$pane_pid")"
+      [ -n "$claude_pid" ] || { count=$((count+1)); tmux kill-window -t "$session:$w" 2>/dev/null; continue; }
+      t1="$(date +%s)"; s1="$(cpu_ticks "$claude_pid")"
+      sleep 2
+      t2="$(date +%s)"; s2="$(cpu_ticks "$claude_pid")"
+      wall=$(( t2 - t1 )); [ "$wall" -lt 1 ] && wall=1
+      # cpus is in hundredths of a second (both platforms, see cpu_ticks).
+      # Busy when CPU-seconds >= 0.5% of wall time: cpus >= wall*0.5.
+      cpus=$(( s2 - s1 ))
+      if [ $(( cpus * 2 )) -lt "$wall" ]; then
+        tmux kill-window -t "$session:$w" 2>/dev/null && count=$((count+1))
+      fi
+    done
+  fi
+  printf 'swept\t%d\n' "$count"
+}
+
 # Export a conversation as plain text rows for the app's local scrollback:
 # user messages get a "❯ " prefix, assistant text is plain, tool results are
 # skipped, control chars stripped, each line truncated, newest EXPORT_MAX
@@ -568,6 +649,10 @@ main() {
     status)
       [ $# -ge 2 ] || { printf 'error\t%s\n' "usage: status <tmux-session>"; return 1; }
       cmd_status "$2"
+      ;;
+    sweep)
+      [ $# -ge 3 ] || { printf 'error\t%s\n' "usage: sweep <tmux-session> <base-dir> [idle-minutes]"; return 1; }
+      cmd_sweep "$2" "$3" "${4:-180}"
       ;;
     switch)
       [ $# -ge 5 ] || { printf 'error\t%s\n' "usage: switch <tmux-session> <base-dir> <real-dir> <resume:id|new:uuid>"; return 1; }

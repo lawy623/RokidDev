@@ -299,7 +299,9 @@ test_sweep_kills_idle_keeps_active() {
   "$HELPER" switch "$SESSION" "$BASE" "$dir" "resume:aaa111" >/dev/null || return 1
   "$HELPER" switch "$SESSION" "$BASE" "$dir" "resume:bbb222" >/dev/null || return 1
   sleep 0.5
-  # Make both transcripts old (idle); aaa111 is now the ACTIVE window.
+  # Make both transcripts old (idle); select aaa111 so it is the ACTIVE
+  # window (never swept) and bbb222 is the idle background one.
+  tmux select-window -t "$SESSION:rokid-aaa111"
   touch -t 200001010000 "$PROJECTS/$enc/aaa111.jsonl" "$PROJECTS/$enc/bbb222.jsonl"
   local out
   out="$(SWEEP_SAMPLE_SLEEP=1 "$HELPER" sweep "$SESSION" "$BASE" 1)"
