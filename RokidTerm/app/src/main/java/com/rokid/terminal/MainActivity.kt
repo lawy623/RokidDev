@@ -2594,12 +2594,15 @@ class MainActivity : Activity() {
     }
 
     /**
-     * Polls `status` for a few seconds after a NEW conversation switch and,
-     * when the server's real session id appears (the JSONL is written on the
-     * first message), corrects the binding/remembered target/cache to the
-     * REAL id. The app-generated placeholder id may differ from the server's
-     * file, which caused duplicate-looking rows, failed resumes, and a wrong
-     * ▶ marker (bug 1, 2026-08-07). Session ids are never logged.
+     * Polls the folder LIST for a few seconds after a NEW conversation
+     * switch and, when a real session file appears (the JSONL is written on
+     * the first message), corrects the binding/remembered target/cache to
+     * the REAL id and renames the server window via `adopt`. The
+     * app-generated placeholder id may differ from the server's file
+     * (--session-id can be ignored), which caused duplicate-looking rows,
+     * failed resumes, and a wrong ▶ marker (bug 1, 2026-08-07). Re-list
+     * polling (2026-08-11) is independent of the process's open-file state,
+     * unlike `status`-based discovery. Session ids are never logged.
      */
     private fun discoverNewSessionId(folderPath: String, tempSessionId: String, previousSessionId: String?) {
         val endpoint = activeEndpoint ?: return
@@ -2608,14 +2611,15 @@ class MainActivity : Activity() {
         Thread {
             for (attempt in 0 until 6) {
                 Thread.sleep(2000)
-                val status = fetcher.status(endpoint.sessionName) ?: continue
-                val cwd = status.cwd ?: continue
-                if (ServerSessionFetcher.encodeDir(cwd) != folderKey) continue
-                val realId = status.sessionId ?: continue
-                if (realId == tempSessionId || realId.isEmpty()) continue
-                // Before the new chat's first message the server's newest
-                // session is still the one we switched away from — never
-                // "correct" back to it (bug 1, 2026-08-07).
+                val folders = fetcher.listSessions(endpoint.workspace) ?: continue
+                val folder = folders.firstOrNull { it.encodedDir == folderKey } ?: continue
+                val real = ServerSessionFetcher.newestUnboundSession(folder, tempSessionId, previousSessionId)
+                    ?: continue
+                val realId = real.id
+                if (realId.isEmpty()) continue
+                // Before the new chat's first message the folder's newest is
+                // still the previous conversation — never "correct" back to
+                // it (bug 1, 2026-08-07; also excluded by the filter above).
                 if (realId == previousSessionId) continue
                 runOnUiThread {
                     if (scrollbackSessionId == tempSessionId) {
@@ -2645,6 +2649,22 @@ class MainActivity : Activity() {
                         }
                     }
                 }
+                // Best-effort (design 2026-08-11 §3.4): keep the server
+                // window name in sync with the real id so later switches
+                // find it by name even when the process is idle. Failure is
+                // logged only — the next switch self-heals via
+                // identification. Never logs the session id.
+                val adoptEndpoint = endpoint
+                Thread {
+                    try {
+                        fetcher.adoptConversation(adoptEndpoint.sessionName, folderPath, realId)
+                    } catch (error: Exception) {
+                        android.util.Log.w(
+                            "RokidTerminal",
+                            "adopt failed: ${error.message ?: error.javaClass.simpleName}",
+                        )
+                    }
+                }.start()
                 return@Thread
             }
         }.start()
