@@ -1338,34 +1338,64 @@ git commit -m "feat(app): idle sweep runnable + status bar shows conversation wi
 
 ---
 
-### Task 9: Server deploy + smoke-test script
+### Task 9: Server-agnostic deploy + smoke-test script
 
 **Files:**
-- Create: `server/test/smoke_test.sh` (executable)
+- Create: `server/deploy.sh` (executable)
 - Modify: `RokidTerm/README.md` (install section)
 
-- [ ] **Step 1: Write the smoke-test script**
+**Goal (user requirement 2026-08-11):** a NEW server (given access) must be
+deployable in one command. The helper's host-specific bits are already
+env-overridable (`ROKID_SESSIONS_PROJECTS_DIR`, `ROKID_SESSIONS_LAUNCHER`);
+`deploy.sh` wraps the scp + verify + smoke steps.
 
-`server/test/smoke_test.sh` is a thin wrapper that runs the FULL harness against a real tmux server with `/proc` (the deployment host) — it is exactly `helper_test.sh` (symlink or copy), plus a check that the deployed helper matches the repo copy:
+- [ ] **Step 1: Write `server/deploy.sh`**
 
 ```bash
 #!/usr/bin/env bash
-# Server-side smoke test for rokid-sessions (run AFTER deploying the new
-# helper to /home/rokid/bin/rokid-sessions). On the deployment host this
-# exercises the /proc fd-scan and Linux jiffy CPU units. Usage:
-#   scp server/rokid-sessions <user>@<host>:/home/rokid/bin/rokid-sessions
-#   ssh <user>@<host> 'chmod +x ~/bin/rokid-sessions'
-#   scp -r server/test <user>@<host>:~/rokidterm-test/
-#   ssh <user>@<host> 'bash ~/rokidterm-test/helper_test.sh'
+# One-command deploy + smoke test for the rokid-sessions helper on a NEW
+# server (user requirement 2026-08-11). Usage:
+#   bash server/deploy.sh <user>@<host> [launcher-path]
+#   # e.g. bash server/deploy.sh rokid@1.2.3.4 /home/rokid/bin/rokid-claude
+# Prerequisites on the target: ssh/scp access, bash, tmux, python3,
+# procps (ps/pgrep), coreutils (stat), and optionally lsof (fallback only).
+# The harness (server/test) runs on the target and exercises the REAL /proc
+# fd-scan and Linux jiffy CPU units — the same paths the app will use.
 set -u
 ROOT="$(cd "$(dirname "$0")" && pwd)"
-echo "smoke: helper at $ROOT/../rokid-sessions, tmux: $(command -v tmux)"
-bash "$ROOT/helper_test.sh"
+TARGET="${1:-}"
+LAUNCHER="${2:-/home/rokid/bin/rokid-claude}"
+[ -n "$TARGET" ] || { echo "usage: bash server/deploy.sh <user>@<host> [launcher-path]"; exit 1; }
+REMOTE_DIR="rokidterm-server"
+
+for tool in ssh scp tmux; do command -v "$tool" >/dev/null || { echo "missing local: $tool"; exit 1; }; done
+
+echo "== deploy helper to $TARGET"
+scp "$ROOT/rokid-sessions" "$TARGET:/home/${TARGET%@*}/bin/rokid-sessions" \
+  || { echo "FAILED: scp helper"; exit 1; }
+ssh "$TARGET" "chmod +x /home/${TARGET%@*}/bin/rokid-sessions" || exit 1
+
+echo "== prerequisites on target"
+ssh "$TARGET" 'for t in tmux python3 ps pgrep stat; do command -v '"$t"' >/dev/null || echo "missing: '"$t"'"; done; [ -x '"$LAUNCHER"' ] || echo "note: launcher not found at '"$LAUNCHER"' (override with arg 2)"'
+
+echo "== run smoke harness on target (/proc paths)"
+scp -r "$ROOT/test" "$TARGET:/tmp/$REMOTE_DIR" >/dev/null 2>&1 || { echo "FAILED: scp tests"; exit 1; }
+ssh "$TARGET" "bash /tmp/$REMOTE_DIR/helper_test.sh && rm -rf /tmp/$REMOTE_DIR" \
+  || { echo "FAILED: smoke"; exit 1; }
+echo "== deployed + smoke OK"
 ```
+
+Notes: `/home/${TARGET%@*}/bin` assumes the login user's home is `/home/<user>` (the standard layout; adjust if the target differs). The smoke run doubles as the portability proof — every scenario that passes on the target exercises the same code the app will run.
 
 - [ ] **Step 2: Update the README install section**
 
-In `RokidTerm/README.md`, extend the `rokid-sessions` install block to mention: (a) the new verbs (`adopt`, `sweep`), (b) the attach semantics (switching no longer restarts), (c) the idle sweep default (3 h) and how to tune it (`sweep <session> <base> <minutes>`), (d) the smoke-test command from Step 1.
+In `RokidTerm/README.md`, replace the manual `scp`/`chmod` install lines for `rokid-sessions` with:
+
+```bash
+bash server/deploy.sh <user>@<host>            # one-command deploy + smoke
+```
+
+and document: (a) prerequisites (tmux, python3, procps, coreutils; lsof optional), (b) the env overrides `ROKID_SESSIONS_PROJECTS_DIR` / `ROKID_SESSIONS_LAUNCHER`, (c) the new verbs (`adopt`, `sweep`), (d) attach semantics (switching no longer restarts; delete ends the window; idle sweep default 3 h, tune with `sweep <session> <base> <minutes>`), (e) the launcher-path argument for non-default installs.
 
 - [ ] **Step 3: Run the full harness locally once more**
 
@@ -1375,8 +1405,8 @@ Expected: ALL scenarios PASS (regression gate before handoff).
 - [ ] **Step 4: Commit**
 
 ```bash
-git add server/test/smoke_test.sh RokidTerm/README.md
-git commit -m "docs: deploy + smoke-test instructions for concurrent sessions"
+git add server/deploy.sh RokidTerm/README.md
+git commit -m "feat(server): one-command deploy + smoke script for new servers"
 ```
 
 ---
