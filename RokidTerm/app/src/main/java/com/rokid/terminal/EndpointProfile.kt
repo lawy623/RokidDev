@@ -68,7 +68,9 @@ data class EndpointProfile(
         val FORBIDDEN_USERS = setOf("root", "ubuntu", "admin", "administrator", "ec2-user")
         private const val CLAUDE_LAUNCHER = "/home/rokid/bin/rokid-claude"
         private val TMUX_STATUS_OPTIONS = listOf(
-            "status-left" to "[#{session_name}] ",
+            // The per-conversation window name (rokid-<id>) — shows WHICH
+            // conversation is attached (design 2026-08-11 §3.5).
+            "status-left" to "[#{window_name}] ",
             "status-left-length" to "20",
             "status-right" to "%H:%M",
             "status-right-length" to "5",

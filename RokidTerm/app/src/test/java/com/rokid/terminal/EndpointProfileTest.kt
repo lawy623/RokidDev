@@ -16,7 +16,7 @@ class EndpointProfileTest {
     )
 
     private val statusOptions =
-        "tmux set-option -t cloud-claude status-left '[#{session_name}] ' && " +
+        "tmux set-option -t cloud-claude status-left '[#{window_name}] ' && " +
             "tmux set-option -t cloud-claude status-left-length '20' && " +
             "tmux set-option -t cloud-claude status-right '%H:%M' && " +
             "tmux set-option -t cloud-claude status-right-length '5' && " +

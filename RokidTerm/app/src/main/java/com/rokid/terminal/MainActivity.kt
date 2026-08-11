@@ -148,6 +148,18 @@ class MainActivity : Activity() {
         }
     }
 
+    /** Idle-conversation sweep (design 2026-08-11 §3.6): ends idle background
+     *  conversations every SWEEP_INTERVAL_MS while connected. Single-flight;
+     *  runs on its own thread (the sweep's CPU sampling takes minutes). */
+    @Volatile
+    private var sweepInFlight = false
+    private val sweepRunnable = object : Runnable {
+        override fun run() {
+            runSweep()
+            mainHandler.postDelayed(this, SWEEP_INTERVAL_MS)
+        }
+    }
+
     private val drainTerminalFrame = Runnable {
         pendingTerminalFrame.getAndSet(null)?.let(terminalView::setTerminalFrame)
         // Diagnostics: how fast is scrollback growing (alternate-screen capture)?
@@ -212,6 +224,7 @@ class MainActivity : Activity() {
         terminalView.post { updateKeyboardIndicator() }
         scrollbackStore = ScrollbackStore(filesDir)
         mainHandler.post(sessionSyncRunnable)
+        mainHandler.postDelayed(sweepRunnable, SWEEP_INTERVAL_MS)
         mainHandler.post(panelExitRunnable)
         registerReceiver(
             inputDeviceReceiver,
@@ -366,6 +379,7 @@ class MainActivity : Activity() {
         persistScrollback()
         mainHandler.removeCallbacks(keyboardPoll)
         mainHandler.removeCallbacks(sessionSyncRunnable)
+        mainHandler.removeCallbacks(sweepRunnable)
         runCatching { unregisterReceiver(inputDeviceReceiver) }
         clearPrimaryGesture()
         speech.destroy()
@@ -2799,6 +2813,28 @@ class MainActivity : Activity() {
         }.start()
     }
 
+    /** Runs the idle sweep (design 2026-08-11 §3.6). Diagnostic only: the
+     *  count is logged; the server decides what is idle. Never logs ids. */
+    private fun runSweep() {
+        val fetcher = sessionFetcher ?: return
+        val endpoint = activeEndpoint ?: return
+        if (sshState != "CONNECTED" || sessionPicker.open || switchInFlight || sweepInFlight) return
+        sweepInFlight = true
+        Thread {
+            try {
+                val count = fetcher.sweepIdle(endpoint.sessionName, endpoint.workspace)
+                android.util.Log.i("RokidTerminal", "idle sweep: ${count ?: -1} ended")
+            } catch (error: Exception) {
+                android.util.Log.w(
+                    "RokidTerminal",
+                    "idle sweep failed: ${error.message ?: error.javaClass.simpleName}",
+                )
+            } finally {
+                sweepInFlight = false
+            }
+        }.start()
+    }
+
     private fun reconnectActiveEndpoint() {
         val endpoint = activeEndpoint ?: return
         traceRecorder.reset()
@@ -2912,6 +2948,8 @@ class MainActivity : Activity() {
 
         /** Sync-watcher poll interval (design 2026-08-07 §3.3); see [sessionSyncRunnable]. */
         const val SESSION_SYNC_MS = 30_000L
+        /** Idle-conversation sweep cadence (design 2026-08-11 §3.6). */
+        const val SWEEP_INTERVAL_MS = 5 * 60_000L
 
         /** Placeholder title for freshly created conversations (until the
          *  server's first-message title is fetched). */
