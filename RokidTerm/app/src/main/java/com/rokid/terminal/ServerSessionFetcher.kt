@@ -64,6 +64,29 @@ class ServerSessionFetcher(
         timeoutMs = SWITCH_TIMEOUT_MS,
     )
 
+    /**
+     * Renames the ACTIVE window to the conversation's real id after new-chat
+     * discover convergence (the server may have ignored --session-id;
+     * design 2026-08-11 §3.3). Best-effort: the caller logs, never blocks.
+     */
+    fun adoptConversation(
+        tmuxSession: String,
+        folderPath: String,
+        newSessionId: String,
+    ): String? = run(
+        "$HELPER adopt ${shellQuote(tmuxSession)} ${shellQuote(folderPath)} ${shellQuote(newSessionId)}",
+    )
+
+    /**
+     * Ends idle background conversations server-side (design 2026-08-11
+     * §3.6). Takes minutes (CPU sampling); the caller runs it on its own
+     * thread. Returns the helper's raw output; parse with [parseSweepResult].
+     */
+    fun sweepIdle(tmuxSession: String, baseDir: String): String? = run(
+        "$HELPER sweep ${shellQuote(tmuxSession)} ${shellQuote(baseDir)}",
+        timeoutMs = SWEEP_TIMEOUT_MS,
+    )
+
     private fun run(command: String, timeoutMs: Int = FETCH_TIMEOUT_MS): String? {
         var session: Session? = null
         var channel: ChannelExec? = null
@@ -153,6 +176,8 @@ class ServerSessionFetcher(
         const val HELPER = "/home/rokid/bin/rokid-sessions 2>/dev/null"
         private const val FETCH_TIMEOUT_MS = 15_000
         private const val SWITCH_TIMEOUT_MS = 25_000
+        /** The sweep's CPU sampling alone takes ~2 min per run. */
+        private const val SWEEP_TIMEOUT_MS = 180_000
         private const val QUIET_MS = 750L
 
         /**
@@ -207,6 +232,23 @@ class ServerSessionFetcher(
             if (parts.size < 3) return null
             return parts[1] to parts[2]
         }
+
+        /** Count from a `swept\t<count>` line; null when the sweep failed. */
+        fun parseSweepResult(text: String): Int? {
+            val line = text.lineSequence().firstOrNull { it.startsWith("swept\t") } ?: return null
+            return line.substringAfter('\t').toIntOrNull()
+        }
+
+        /**
+         * The newly-created conversation's real session from a re-listed
+         * folder: the newest session whose id is neither the app-generated
+         * placeholder (id honored -> nothing to converge) nor the previous
+         * conversation. Null when no such session exists yet.
+         */
+        fun newestUnboundSession(folder: RemoteFolder, tempId: String, previousId: String?): RemoteSession? =
+            folder.sessions
+                .filter { it.id != tempId && it.id != previousId }
+                .maxByOrNull { it.epochMillis }
 
         private fun shellQuote(value: String): String = "'" + value.replace("'", "'\\''") + "'"
     }

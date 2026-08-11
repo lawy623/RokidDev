@@ -70,4 +70,48 @@ class ServerSessionFetcherParseTest {
         assertNull(ServerSessionFetcher.parseSwitchResult("error\thelper missing"))
         assertNull(ServerSessionFetcher.parseSwitchResult(""))
     }
+
+    @Test
+    fun parseSweepResultCounts() {
+        assertEquals(3, ServerSessionFetcher.parseSweepResult("swept\t3"))
+        assertEquals(0, ServerSessionFetcher.parseSweepResult("swept\t0"))
+        assertNull(ServerSessionFetcher.parseSweepResult("error\tsomething"))
+        assertNull(ServerSessionFetcher.parseSweepResult(""))
+    }
+
+    @Test
+    fun newestUnboundSessionSkipsTempAndPrevious() {
+        val folder = RemoteFolder(
+            "/srv/proj", "-srv-proj", listOf(
+                RemoteSession("prev-id", "old", 1000L),
+                RemoteSession("temp-id", "new chat", 2000L),
+                RemoteSession("real-id", "title", 3000L),
+            ),
+        )
+        val result = ServerSessionFetcher.newestUnboundSession(folder, "temp-id", "prev-id")
+        assertEquals("real-id", result?.id)
+    }
+
+    @Test
+    fun newestUnboundSessionNullWhenOnlyTempOrPrevious() {
+        val folder = RemoteFolder(
+            "/srv/proj", "-srv-proj", listOf(
+                RemoteSession("temp-id", "new chat", 2000L),
+            ),
+        )
+        assertNull(ServerSessionFetcher.newestUnboundSession(folder, "temp-id", "prev-id"))
+        val onlyPrev = RemoteFolder("/srv/proj", "-srv-proj", listOf(RemoteSession("prev-id", "old", 1000L)))
+        assertNull(ServerSessionFetcher.newestUnboundSession(onlyPrev, "temp-id", "prev-id"))
+    }
+
+    @Test
+    fun newestUnboundSessionPicksNewestOfSeveral() {
+        val folder = RemoteFolder(
+            "/srv/proj", "-srv-proj", listOf(
+                RemoteSession("a-id", "a", 1000L),
+                RemoteSession("b-id", "b", 4000L),
+            ),
+        )
+        assertEquals("b-id", ServerSessionFetcher.newestUnboundSession(folder, "temp-id", null)?.id)
+    }
 }
