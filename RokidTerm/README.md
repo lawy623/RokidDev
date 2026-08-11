@@ -93,8 +93,32 @@ export ANDROID_HOME="$HOME/Library/Android/sdk"
 
 FastAPI + SenseVoiceSmall 的服务端语音识别，作为 RokidTerm 组件维护（非独立仓库）。仅在 127.0.0.1 绑定，由受限 `asr-fwd` SSH 账号转发；识别结果不落盘、不记录转写日志。详见其目录内 `CLAUDE.md`。
 
+## 服务端会话助手（server/）
+
+对话选择器与并发会话（2026-08-11）由服务器端 `rokid-sessions` helper 驱动：
+每对话一个 tmux window（`rokid-<对话id>`），**切换 = attach 语义**（进程永不因切换被杀），
+删除对话 = kill-window（进程随之结束），空闲后台对话被清扫（默认 3 小时，三重信号防误杀，
+选中窗口永不清扫）。
+
+换服务器一键部署 + 冒烟（目标需可 ssh/scp，装有 tmux、python3、procps、coreutils；
+lsof 仅回退路径可选）：
+
+```bash
+bash server/deploy.sh <user>@<host>            # 部署 helper 并在目标上跑完整 harness
+bash server/deploy.sh <user>@<host> /opt/claude/rokid-claude   # 自定义启动器路径
+```
+
+- 环境变量覆盖（无需改脚本）：`ROKID_SESSIONS_PROJECTS_DIR`（对话存储目录，默认
+  `$HOME/.claude/projects`）、`ROKID_SESSIONS_LAUNCHER`（Claude 启动器，默认
+  `/home/rokid/bin/rokid-claude`）。
+- 清扫调参：`rokid-sessions sweep <tmux-session> <base-dir> <idle-minutes>`（App 每 5 分钟
+  自动调一次，默认 180 分钟）。
+- 建议同时运行的对话 2-3 个（每个空闲进程约占 ~200-500MB 内存），不强制限制。
+- 本地 harness：`bash server/test/helper_test.sh [filter]`（macOS tmux + 假 claude，无需服务器）。
+
 ## 已知限制 / 待办
 
-- 会话恢复已实现（2026-08-07）：连接时 / 会话内两层对话选择器，基于服务端
-  `rokid-sessions` helper（list/status/switch/delete/export）+ 每会话滚动历史。
+- 会话恢复 + 并发会话已实现（2026-08-11）：连接时 / 会话内两层对话选择器，基于服务端
+  `rokid-sessions` helper（list/status/switch/delete/export/adopt/sweep）+ 每会话滚动历史；
+  切换对话不再重启 Claude，后台任务持续运行；删除对话结束其 tmux window。
 - 发布前：恢复 `FLAG_SECURE`、release 清理、移除调试路径。
