@@ -367,14 +367,19 @@ Verified on the current glasses and Tencent Cloud server:
   rounds), Type-something free text (digit protocol), long drafts.
   Future AskUserQuestion layout variants are handled per real case
   (contract notes in `rules/input.md` Part 5).
-- **Concurrent sessions (option B)** — each conversation gets its OWN tmux
-  session + Claude process; switching re-attaches instead of
-  kill+respawn, so a long-running task keeps executing while the user
-  works in another conversation (user decision 2026-08-07, confirmed
-  2026-08-10: develop later — the user works with the current
-  single-window terminal first). Design notes: helper `switch` gains
-  attach semantics, unique session names per conversation, local scrollback
-  binding unchanged, cap concurrent processes (~2-3) for server resources.
+- **Concurrent sessions (option B)** — implemented 2026-08-11: one tmux
+  window per conversation (`rokid-<id>`) in the shared session; `switch` is
+  attach semantics (never restarts a live process), `status` reports the
+  active window and self-heals stale window names, `delete` kills the
+  conversation's window, `adopt` renames on new-chat id convergence, and
+  `sweep` ends idle background conversations (default 3 h, triple-signal
+  guard: JSONL age + child presence + CPU sampling; the active window is
+  never swept). Spec: `docs/superpowers/specs/2026-08-11-concurrent-
+  sessions-design.md`. **The server needs the UPDATED helper** — deploy
+  with `bash server/deploy.sh <user>@<host>` (env overrides
+  `ROKID_SESSIONS_PROJECTS_DIR` / `ROKID_SESSIONS_LAUNCHER` for other
+  servers). The app's local isolation (per-conversation scrollback + input
+  history) is unchanged.
 - ~~Local terminal history too short / not persistent~~ — **fixed
   2026-08-06**: root cause was the shared-array bug above; baseline-based
   detection deployed and hardware-verified (single-session history grows
