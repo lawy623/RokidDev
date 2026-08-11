@@ -228,23 +228,30 @@ cmd_list() {
 }
 
 cmd_status() {
-  local session="$1" pane_pid claude_pid cwd enc newest
-  pane_pid="$(tmux list-panes -t "$session" -F '#{pane_pid}' 2>/dev/null | head -1)"
+  local session="$1" win pane_pid claude_pid cwd id
+  tmux has-session -t "$session" 2>/dev/null || { echo "none"; return 0; }
+  win="$(active_window "$session")"
+  [ -n "$win" ] || { echo "none"; return 0; }
+  pane_pid="$(tmux list-panes -t "$session:$win" -F '#{pane_pid}' 2>/dev/null | head -1)"
   [ -n "$pane_pid" ] || { echo "none"; return 0; }
   claude_pid="$(first_claude_descendant "$pane_pid")"
   [ -n "$claude_pid" ] || { echo "none"; return 0; }
   cwd="$(pid_cwd "$claude_pid")"
   [ -n "$cwd" ] || { echo "none"; return 0; }
-  enc="$(encode "$cwd")"
-  newest="$(newest_session_id "$enc")"
-  printf 'pid\t%s\t%s\t%s\n' "$claude_pid" "$cwd" "$newest"
+  id="$(window_conversation_id "$session" "$win")"
+  # Self-healing (design §3.4): keep the window name in sync with the
+  # conversation it actually runs (in-session /resume leaves a stale name).
+  if [ -n "$id" ] && [ "$win" != "rokid-$id" ]; then
+    tmux rename-window -t "$session:$win" "rokid-$id" 2>/dev/null
+  fi
+  printf 'pid\t%s\t%s\t%s\n' "$claude_pid" "$cwd" "${id:--}"
 }
 
 cmd_switch() {
   local session="$1" base="$2" dir="$3" target="$4"
   local base_resolved dir_resolved
-  base_resolved="$(cd "$base" 2>/dev/null && pwd -P)" || { echo "error\tbase not accessible"; return 1; }
-  dir_resolved="$(cd "$dir" 2>/dev/null && pwd -P)" || { echo "error\tpath not accessible"; return 1; }
+  base_resolved="$(cd "$base" 2>/dev/null && pwd -P)" || { printf 'error\t%s\n' "base not accessible"; return 1; }
+  dir_resolved="$(cd "$dir" 2>/dev/null && pwd -P)" || { printf 'error\t%s\n' "path not accessible"; return 1; }
   # Validate the RESOLVED dir (handles .. and symlinks): base itself or a
   # path under it. ${var#prefix} literal-removal avoids case-pattern glob
   # metacharacters in the base path.
@@ -252,7 +259,7 @@ cmd_switch() {
      [ "${dir_resolved#"$base_resolved"/}" != "$dir_resolved" ]; then
     : # ok
   else
-    echo "error\tpath outside base"; return 1
+    printf 'error\t%s\n' "path outside base"; return 1
   fi
 
   local id launch_args
@@ -260,19 +267,19 @@ cmd_switch() {
     resume:*)
       id="${target#resume:}"
       case "$id" in
-        *[!A-Za-z0-9_-]*) echo "error\tbad session id"; return 1 ;;
+        *[!A-Za-z0-9_-]*) printf 'error\t%s\n' "bad session id"; return 1 ;;
       esac
       launch_args="--resume $id"
       ;;
     new:*)
       id="${target#new:}"
       case "$id" in
-        *[!A-Za-z0-9-]*) echo "error\tbad session id"; return 1 ;;
+        *[!A-Za-z0-9-]*) printf 'error\t%s\n' "bad session id"; return 1 ;;
       esac
       launch_args="--session-id $id"
       ;;
     *)
-      echo "error\tbad target"; return 1 ;;
+      printf 'error\t%s\n' "bad target"; return 1 ;;
   esac
 
   local launch_cmd="$CLAUDE_LAUNCHER --effort max --dangerously-skip-permissions $launch_args"
@@ -284,7 +291,7 @@ cmd_switch() {
   local win
   if ! tmux has-session -t "$session" 2>/dev/null; then
     tmux new-session -d -s "$session" -n "rokid-$id" -c "$dir_resolved" "$launch_cmd" \
-      || { echo "error\ttmux create failed"; return 1; }
+      || { printf 'error\t%s\n' "tmux create failed"; return 1; }
     # A dead claude must leave a dead pane in a surviving window (the
     # confirmed contract: re-select respawns it), not kill the whole
     # session and drop the app's attach (design 2026-08-11 §4).
@@ -301,7 +308,7 @@ cmd_switch() {
       # else select as-is.
       local pane_pid claude_pid
       pane_pid="$(tmux list-panes -t "$session:rokid-$id" -F '#{pane_pid}' 2>/dev/null | head -1)"
-      [ -n "$pane_pid" ] || { echo "error\tno tmux pane"; return 1; }
+      [ -n "$pane_pid" ] || { printf 'error\t%s\n' "no tmux pane"; return 1; }
       claude_pid="$(first_claude_descendant "$pane_pid")"
       if [ -n "$claude_pid" ]; then
         kill "$claude_pid" 2>/dev/null
@@ -317,7 +324,7 @@ cmd_switch() {
       tmux select-window -t "$session:rokid-$id"
     else
       tmux new-window -d -n "rokid-$id" -c "$dir_resolved" "$launch_cmd" \
-        || { echo "error\ttmux create failed"; return 1; }
+        || { printf 'error\t%s\n' "tmux create failed"; return 1; }
       tmux select-window -t "$session:rokid-$id"
     fi
   fi
@@ -340,7 +347,7 @@ cmd_switch() {
     fi
     sleep 0.5
   done
-  [ -n "$ok" ] || { echo "error\tclaude did not start"; return 1; }
+  [ -n "$ok" ] || { printf 'error\t%s\n' "claude did not start"; return 1; }
 
   # resume: the session file must exist (a fresh session's JSONL appears on
   # the first message, so for new: pid+cwd above is enough).
@@ -353,7 +360,7 @@ cmd_switch() {
         [ -f "$expected" ] && break
         sleep 0.5
       done
-      [ -f "$expected" ] || { echo "error\tsession file missing"; return 1; }
+      [ -f "$expected" ] || { printf 'error\t%s\n' "session file missing"; return 1; }
       ;;
   esac
 
@@ -363,16 +370,16 @@ cmd_switch() {
 cmd_delete() {
   local session="$1" base="$2" dir="$3" id="$4"
   case "$id" in
-    *[!A-Za-z0-9_-]*) echo "error\tbad session id"; return 1 ;;
+    *[!A-Za-z0-9_-]*) printf 'error\t%s\n' "bad session id"; return 1 ;;
   esac
   local base_resolved dir_resolved
-  base_resolved="$(cd "$base" 2>/dev/null && pwd -P)" || { echo "error\tbase not accessible"; return 1; }
-  dir_resolved="$(cd "$dir" 2>/dev/null && pwd -P)" || { echo "error\tpath not accessible"; return 1; }
+  base_resolved="$(cd "$base" 2>/dev/null && pwd -P)" || { printf 'error\t%s\n' "base not accessible"; return 1; }
+  dir_resolved="$(cd "$dir" 2>/dev/null && pwd -P)" || { printf 'error\t%s\n' "path not accessible"; return 1; }
   if [ "$dir_resolved" = "$base_resolved" ] ||
      [ "${dir_resolved#"$base_resolved"/}" != "$dir_resolved" ]; then
     : # ok
   else
-    echo "error\tpath outside base"; return 1
+    printf 'error\t%s\n' "path outside base"; return 1
   fi
   local enc target
   enc="$(encode "$dir_resolved")"
@@ -387,14 +394,14 @@ cmd_delete() {
       if [ "$cwd" = "$dir_resolved" ]; then
         newest="$(newest_session_id "$enc")"
         if [ "$newest" = "$id" ]; then
-          echo "error\tactive session"
+          printf 'error\t%s\n' "active session"
           return 1
         fi
       fi
     fi
   fi
-  [ -f "$target" ] || { echo "error\tnot found"; return 1; }
-  rm -f "$target" || { echo "error\tdelete failed"; return 1; }
+  [ -f "$target" ] || { printf 'error\t%s\n' "not found"; return 1; }
+  rm -f "$target" || { printf 'error\t%s\n' "delete failed"; return 1; }
   printf 'ok\t%s\t%s\n' "$enc" "$id"
 }
 
@@ -406,21 +413,21 @@ cmd_delete() {
 cmd_export() {
   local base="$1" dir="$2" id="$3"
   case "$id" in
-    *[!A-Za-z0-9_-]*) echo "error\tbad session id"; return 1 ;;
+    *[!A-Za-z0-9_-]*) printf 'error\t%s\n' "bad session id"; return 1 ;;
   esac
   local base_resolved dir_resolved
-  base_resolved="$(cd "$base" 2>/dev/null && pwd -P)" || { echo "error\tbase not accessible"; return 1; }
-  dir_resolved="$(cd "$dir" 2>/dev/null && pwd -P)" || { echo "error\tpath not accessible"; return 1; }
+  base_resolved="$(cd "$base" 2>/dev/null && pwd -P)" || { printf 'error\t%s\n' "base not accessible"; return 1; }
+  dir_resolved="$(cd "$dir" 2>/dev/null && pwd -P)" || { printf 'error\t%s\n' "path not accessible"; return 1; }
   if [ "$dir_resolved" = "$base_resolved" ] ||
      [ "${dir_resolved#"$base_resolved"/}" != "$dir_resolved" ]; then
     : # ok
   else
-    echo "error\tpath outside base"; return 1
+    printf 'error\t%s\n' "path outside base"; return 1
   fi
   local enc target
   enc="$(encode "$dir_resolved")"
   target="$PROJECTS_DIR/$enc/$id.jsonl"
-  [ -f "$target" ] || { echo "error\tnot found"; return 1; }
+  [ -f "$target" ] || { printf 'error\t%s\n' "not found"; return 1; }
   python3 - "$target" << 'PYEOF'
 import json, re, sys
 path = sys.argv[1]
@@ -511,27 +518,27 @@ main() {
   local verb="${1:-}"
   case "$verb" in
     delete)
-      [ $# -ge 5 ] || { echo "error\tusage: delete <tmux-session> <base-dir> <real-dir> <session-id>"; return 1; }
+      [ $# -ge 5 ] || { printf 'error\t%s\n' "usage: delete <tmux-session> <base-dir> <real-dir> <session-id>"; return 1; }
       cmd_delete "$2" "$3" "$4" "$5"
       ;;
     export)
-      [ $# -ge 4 ] || { echo "error\tusage: export <base-dir> <real-dir> <session-id>"; return 1; }
+      [ $# -ge 4 ] || { printf 'error\t%s\n' "usage: export <base-dir> <real-dir> <session-id>"; return 1; }
       cmd_export "$2" "$3" "$4"
       ;;
     list)
-      [ $# -ge 2 ] || { echo "error\tusage: list <base-dir>"; return 1; }
+      [ $# -ge 2 ] || { printf 'error\t%s\n' "usage: list <base-dir>"; return 1; }
       cmd_list "$2"
       ;;
     status)
-      [ $# -ge 2 ] || { echo "error\tusage: status <tmux-session>"; return 1; }
+      [ $# -ge 2 ] || { printf 'error\t%s\n' "usage: status <tmux-session>"; return 1; }
       cmd_status "$2"
       ;;
     switch)
-      [ $# -ge 5 ] || { echo "error\tusage: switch <tmux-session> <base-dir> <real-dir> <resume:id|new:uuid>"; return 1; }
+      [ $# -ge 5 ] || { printf 'error\t%s\n' "usage: switch <tmux-session> <base-dir> <real-dir> <resume:id|new:uuid>"; return 1; }
       cmd_switch "$2" "$3" "$4" "$5"
       ;;
     *)
-      echo "error\tunknown verb"
+      printf 'error\t%s\n' "unknown verb"
       return 1
       ;;
   esac
