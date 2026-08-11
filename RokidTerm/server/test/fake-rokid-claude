@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
 # Fake /home/rokid/bin/rokid-claude for helper harness tests. The pane runs
 # this script, so its cmdline contains "claude" (findable by
-# first_claude_descendant). Env controls:
+# first_claude_descendant). Env controls (note: tmux panes do NOT inherit
+# the invoking shell's env — vars must be passed as command-string prefixes,
+# e.g. `ROKID_FAKE_CPU=4 $FAKE ...`):
 #   ROKID_FAKE_JSONL=<path>  hold an fd open to this transcript file
 #   ROKID_FAKE_CHILD=1       spawn a sleeping child (busy-descendant signal)
 #   ROKID_FAKE_CPU=<secs>    burn that many CPU-seconds in a loop
-#   ROKID_FAKE_LOG=<path>    append one "start" line per launch
+# Log: appends to $TMPDIR/rokid-fake-launch.log (shared, truncated per
+# scenario by the harness) — a fixed path because env vars cannot reach the
+# pane through the tmux server environment.
 id=""
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -14,7 +18,7 @@ while [ $# -gt 0 ]; do
     *) shift ;;
   esac
 done
-echo "start id=${id:-}" >> "${ROKID_FAKE_LOG:-/dev/null}"
+echo "start id=${id:-}" >> "${TMPDIR:-/tmp}/rokid-fake-launch.log"
 if [ -n "${ROKID_FAKE_JSONL:-}" ]; then exec 3>>"$ROKID_FAKE_JSONL"; fi
 if [ "${ROKID_FAKE_CHILD:-0}" = "1" ]; then sleep 300 & fi
 if [ "${ROKID_FAKE_CPU:-0}" -gt 0 ]; then

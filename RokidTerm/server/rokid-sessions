@@ -277,13 +277,30 @@ cmd_switch() {
 
   local launch_cmd="$CLAUDE_LAUNCHER --effort max --dangerously-skip-permissions $launch_args"
 
-  # Ensure the tmux session, then start Claude in its pane: respawn when a
-  # session exists (kills the previous Claude), create otherwise. Fall back
-  # to kill+send-keys if respawn-pane is unavailable.
-  if tmux has-session -t "$session" 2>/dev/null; then
-    if ! tmux respawn-pane -t "$session" -k -c "$dir_resolved" "$launch_cmd" 2>/dev/null; then
+  # Attach semantics (design 2026-08-11 §3.3): a conversation's window is
+  # SELECTED, never restarted, when its claude is alive; dead windows are
+  # respawned in place; missing windows are created. Only the session-level
+  # first launch (no session at all) creates the session.
+  local win
+  if ! tmux has-session -t "$session" 2>/dev/null; then
+    tmux new-session -d -s "$session" -n "rokid-$id" -c "$dir_resolved" "$launch_cmd" \
+      || { echo "error\ttmux create failed"; return 1; }
+    # A dead claude must leave a dead pane in a surviving window (the
+    # confirmed contract: re-select respawns it), not kill the whole
+    # session and drop the app's attach (design 2026-08-11 §4).
+    tmux set-option -t "$session" remain-on-exit on 2>/dev/null
+  else
+    win="$(find_window_for "$session" "$id")"
+    if [ -n "$win" ]; then
+      # Found by identification: sync the name (in-session /resume or a
+      # legacy window left a stale name) and select.
+      [ "$win" = "rokid-$id" ] || tmux rename-window -t "$session:$win" "rokid-$id" 2>/dev/null
+      tmux select-window -t "$session:$win"
+    elif tmux list-windows -t "$session" -F '#{window_name}' 2>/dev/null | grep -qx "rokid-$id"; then
+      # Named window exists; respawn its claude when dead (kill + relaunch),
+      # else select as-is.
       local pane_pid claude_pid
-      pane_pid="$(tmux list-panes -t "$session" -F '#{pane_pid}' 2>/dev/null | head -1)"
+      pane_pid="$(tmux list-panes -t "$session:rokid-$id" -F '#{pane_pid}' 2>/dev/null | head -1)"
       [ -n "$pane_pid" ] || { echo "error\tno tmux pane"; return 1; }
       claude_pid="$(first_claude_descendant "$pane_pid")"
       if [ -n "$claude_pid" ]; then
@@ -292,19 +309,26 @@ cmd_switch() {
         kill -0 "$claude_pid" 2>/dev/null && kill -9 "$claude_pid" 2>/dev/null
         sleep 1
       fi
-      local qdir
-      qdir="$(printf '%q' "$dir_resolved")"
-      tmux send-keys -t "$session" "cd $qdir && $launch_cmd" Enter
+      if ! tmux respawn-pane -t "$session:rokid-$id" -k -c "$dir_resolved" "$launch_cmd" 2>/dev/null; then
+        local qdir
+        qdir="$(printf '%q' "$dir_resolved")"
+        tmux send-keys -t "$session:rokid-$id" "cd $qdir && $launch_cmd" Enter
+      fi
+      tmux select-window -t "$session:rokid-$id"
+    else
+      tmux new-window -d -n "rokid-$id" -c "$dir_resolved" "$launch_cmd" \
+        || { echo "error\ttmux create failed"; return 1; }
+      tmux select-window -t "$session:rokid-$id"
     fi
-  else
-    tmux new-session -d -s "$session" -c "$dir_resolved" "$launch_cmd"
   fi
 
   # Verify: a Claude process whose cwd is the target dir (poll <= 15 s).
+  # Targets the ACTIVE window (the one just selected) — with multiple
+  # windows, a bare session target would poll the wrong pane.
   local i ok=""
   for i in $(seq 1 30); do
     local pane_pid2 claude_pid2 cwd2
-    pane_pid2="$(tmux list-panes -t "$session" -F '#{pane_pid}' 2>/dev/null | head -1)"
+    pane_pid2="$(tmux list-panes -t "$session:" -F '#{pane_pid}' 2>/dev/null | head -1)"
     [ -n "$pane_pid2" ] || break
     claude_pid2="$(first_claude_descendant "$pane_pid2")"
     if [ -n "$claude_pid2" ]; then

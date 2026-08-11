@@ -13,16 +13,21 @@ SESSION="rokid-harness-$$"
 PASS=0; FAIL=0; FAILED_CASES=""
 FILTER="${1:-}"
 
-export ROKID_SESSIONS_SOURCE=1
-. "$HELPER"
+# Inline (NOT exported): a subprocess helper invocation must run main(), and
+# the guard would otherwise leak into its environment and swallow the verb.
+ROKID_SESSIONS_SOURCE=1 . "$HELPER"
 
 setup() {   # per-scenario: fresh tmp dirs + a session named $SESSION
   TEST_TMP="$(mktemp -d)"
-  BASE="$TEST_TMP/base"; PROJECTS="$TEST_TMP/projects"
-  mkdir -p "$BASE/proj" "$PROJECTS" "$PROJECTS/$(enc "$BASE/proj")"
+  mkdir -p "$TEST_TMP/base/proj" "$TEST_TMP/projects"
+  # Canonicalize (macOS /var -> /private/var): the helper resolves paths
+  # with pwd -P, so the harness's enc dirs must match exactly.
+  BASE="$(cd "$TEST_TMP/base" && pwd -P)"
+  PROJECTS="$(cd "$TEST_TMP/projects" && pwd -P)"
+  mkdir -p "$PROJECTS/$(enc "$BASE/proj")"
   export ROKID_SESSIONS_PROJECTS_DIR="$PROJECTS"
   export ROKID_SESSIONS_LAUNCHER="$FAKE"
-  export ROKID_FAKE_LOG="$TEST_TMP/launch.log"
+  FAKE_LOG="${TMPDIR:-/tmp}/rokid-fake-launch.log"; : > "$FAKE_LOG"
   tmux kill-session -t "$SESSION" 2>/dev/null || true
 }
 teardown() {
@@ -41,9 +46,10 @@ run_case() {
 assert_eq() { [ "$1" = "$2" ] || { echo "  assert_eq failed: expected [$1] got [$2]"; return 1; }; }
 # Encode a path the same way the helper does (tr -c 'A-Za-z0-9' '-').
 enc() { printf '%s' "$1" | tr -c 'A-Za-z0-9' '-'; }
-# status of $SESSION via the helper, extracting field 3 (the conversation id)
+# status of $SESSION via the helper, extracting field 4 (the conversation id;
+# the protocol is pid\t<cwd>\t<id>)
 run_helper_status_id() {
-  "$HELPER" status "$SESSION" 2>/dev/null | awk -F '\t' '$1=="pid"{print $3}'
+  "$HELPER" status "$SESSION" 2>/dev/null | awk -F '\t' '$1=="pid"{print $4}'
 }
 
 # --- identification ---------------------------------------------------------
@@ -111,12 +117,12 @@ test_switch_selects_without_restart() {
   "$HELPER" switch "$SESSION" "$BASE" "$dir" "resume:aaa111" >/dev/null || return 1
   sleep 0.5
   local before after
-  before="$(wc -l < "$ROKID_FAKE_LOG")"
+  before="$(wc -l < "$FAKE_LOG")"
   local out
   out="$("$HELPER" switch "$SESSION" "$BASE" "$dir" "resume:aaa111")" || return 1
   assert_eq "ok	$enc	aaa111" "$out" || return 1
   sleep 0.5
-  after="$(wc -l < "$ROKID_FAKE_LOG")"
+  after="$(wc -l < "$FAKE_LOG")"
   assert_eq "$before" "$after" || return 1
   assert_eq "1" "$(tmux list-windows -t "$SESSION" -F '#{window_name}' | wc -l | tr -d ' ')" || return 1
 }
@@ -134,10 +140,10 @@ test_switch_respawns_dead() {
   [ -n "$(tmux list-windows -t "$SESSION" -F '#{window_name}' | grep 'rokid-aaa111')" ] \
     || { echo "  window was destroyed"; return 1; }
   local before after
-  before="$(wc -l < "$ROKID_FAKE_LOG")"
+  before="$(wc -l < "$FAKE_LOG")"
   "$HELPER" switch "$SESSION" "$BASE" "$dir" "resume:aaa111" >/dev/null || return 1
   sleep 0.5
-  after="$(wc -l < "$ROKID_FAKE_LOG")"
+  after="$(wc -l < "$FAKE_LOG")"
   [ $(( after - before )) -ge 1 ] || { echo "  no respawn launch"; return 1; }
   assert_eq "aaa111" "$(run_helper_status_id)" || return 1
 }
