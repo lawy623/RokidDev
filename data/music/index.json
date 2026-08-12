@@ -6,5 +6,7 @@
   {"title": "天下", "artist": "张杰", "url": "data/music/tianxia_douyin.tab.json"},
   {"title": "突然好想你", "artist": "五月天", "url": "data/music/turanhaoxiangni_douyin.tab.json"},
   {"title": "一路向北", "artist": "周杰伦", "url": "data/music/yiluxiangbei_douyin.tab.json"},
-  {"title": "真的爱你", "artist": "BEYOND", "url": "data/music/zhendeaini_douyin.tab.json"}
+  {"title": "真的爱你", "artist": "BEYOND", "url": "data/music/zhendeaini_douyin.tab.json"},
+  {"title": "枫", "artist": "周杰伦", "url": "data/music/feng_douyin.tab.json"},
+  {"title": "光辉岁月", "artist": "BEYOND", "url": "data/music/guanghuisuiyue_douyin.tab.json"}
 ]

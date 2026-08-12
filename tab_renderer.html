@@ -275,20 +275,6 @@
   }
   .inline-edit-input:focus { border-bottom-style: solid; }
 
-  .public-badge {
-    display: inline-block;
-    margin-left: 10px;
-    padding: 0 6px;
-    font-size: 10px;
-    line-height: 18px;
-    color: var(--green-dim);
-    border: 1px solid var(--green-dim);
-    border-radius: 3px;
-    vertical-align: middle;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
-
   .controls {
     margin-top: 8px;
     display: flex;
@@ -602,7 +588,7 @@
     <div class="start-hero">
       <div>
         <h1 class="start-title">Guitar Player</h1>
-        <div class="start-subtitle">Select a TAB score — Public Demo</div>
+        <div class="start-subtitle">Select a TAB score for Rokid green display.</div>
       </div>
       <div class="guitar-silhouette" aria-hidden="true">
         <img src="assets/guitar-player-lineart-transparent.png" alt="">
@@ -626,12 +612,12 @@
     <header class="player-header">
       <div>
         <h1><span id="title">RokidMusic Tab Renderer</span><span id="titlePencil" class="edit-pencil" title="Edit title">✎</span></h1>
-        <div class="meta"><span id="meta">Rokid Glass AR Viewer</span><span class="public-badge">Public Demo</span><span id="metaPencil" class="edit-pencil" title="Edit artist">✎</span></div>
+        <div class="meta"><span id="meta">Rokid Glass AR Viewer</span><span id="metaPencil" class="edit-pencil" title="Edit artist">✎</span></div>
       </div>
       <div>
         <div id="hud" class="hud"></div>
         <div class="controls">
-          <button id="editBtn" class="edit-toggle" type="button" style="display:none" title="Editing disabled in public demo">Edit</button>
+          <button id="editBtn" class="edit-toggle" type="button">Edit</button>
           <button id="backBtn" type="button">Back</button>
           <button id="playBtn" type="button">Play</button>
           <button id="stopBtn" type="button">Pause</button>
@@ -644,7 +630,7 @@
         <div id="editorInfo" class="editor-info">
           <span id="editorInfoText" class="editor-info-text">Edit mode is off.</span>
           <span class="editor-info-actions">
-            <button data-editor-action="save" type="button" style="display:none" title="Save disabled in public demo">Save JSON</button>
+            <button data-editor-action="save" type="button">Save JSON</button>
             <button data-editor-action="download" type="button">Download</button>
             <button data-editor-action="undo" type="button">Undo</button>
           </span>
@@ -679,7 +665,8 @@
         <div class="editor-row editor-row-mark">
           <div class="editor-group editor-group-note-mark">
             <span class="editor-label">Mark</span>
-            <button data-editor-action="tied-note" type="button">Parenthesized/Tied</button>
+            <button data-editor-action="tied-note" type="button">Tied</button>
+            <button data-editor-action="artificial-harmonic-note" type="button">A.H.</button>
             <button data-editor-action="ghost" type="button">Ghost</button>
             <button data-editor-action="ring" type="button">Ring</button>
             <button data-editor-action="dead" type="button">Dead</button>
@@ -889,7 +876,10 @@ const editor = {
 
 async function main() {
   if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
-  // Public deployment: no file:// redirect needed
+  if (location.protocol === 'file:') {
+    location.replace('http://localhost:8765/tab_renderer.html');
+    return;
+  }
   bindAppControls();
   window.addEventListener('resize', () => {
     fitAppToViewport();
@@ -952,7 +942,12 @@ async function populateScoreSelect() {
   const select = document.getElementById('scoreSelect');
   var drop = select.querySelector('.score-select-dropdown');
   drop.innerHTML = '';
-  // Public demo: "New empty score" removed (save disabled)
+  // "New empty score" entry at the top
+  var newOpt = document.createElement('div');
+  newOpt.className = 'score-select-option score-select-new';
+  newOpt.textContent = '✚  New empty score...';
+  newOpt.dataset.action = 'new';
+  drop.appendChild(newOpt);
   for (const option of options) {
     var el = document.createElement('div');
     el.className = 'score-select-option';
@@ -987,8 +982,8 @@ async function enterSelectedScore() {
     document.getElementById('startStatus').textContent = 'Creating new score: ' + label;
     renderScore(score, null);
     showPlayerScreen();
-    // Public demo: editing disabled, skip auto-enter edit mode
-    // setEditorEnabled(true);
+    // Auto-enter edit mode so user can start building the score immediately.
+    setEditorEnabled(true);
     return;
   }
   const url = appState.selectedScoreUrl || DEFAULT_SCORE_URL;
@@ -1334,7 +1329,7 @@ function estimateMeasureBeatWidth(measure) {
 
 function eventHalfWidth(event) {
   if (event.type === 'rest') return 8;
-  const texts = (event.notes || []).map(note => note.status === 'dead' ? 'X' : String(note.display || note.fret || '0'));
+  const texts = (event.notes || []).map(note => noteDisplayText(note));
   const longest = texts.reduce((max, text) => Math.max(max, text.length), 1);
   if (longest >= 4) return 13;
   if (longest === 3) return 11;
@@ -1755,8 +1750,7 @@ function hasArticulation(event, type) {
 }
 
 function noteTextBox(ctx, note, x, y) {
-  const display = note.display || String(note.fret);
-  const text = (note.status === 'dead' || note.status === 'mute') ? 'X' : display;
+  const text = noteDisplayText(note);
   const font = text.length > 2 ? 'bold 11px monospace' : 'bold 13px monospace';
   ctx.font = font;
   const metrics = ctx.measureText(text);
@@ -2389,10 +2383,26 @@ function editorNoteHit(point, renderIndex, tight = false) {
 
 function noteDisplayText(note) {
   if (!note) return '';
-  if (note.display != null) return String(note.display);
-  if (note.status === 'dead' || note.status === 'mute') return 'x';
-  if (note.status === 'tied' || note.status === 'ghost') return `(${note.fret ?? ''})`;
-  return String(note.fret ?? '');
+  if (note.status === 'dead' || note.status === 'mute') return 'X';
+  const display = note.display != null ? String(note.display) : String(note.fret ?? '');
+  if (note.status === 'tied' || note.status === 'ghost') {
+    return `(${stripOuterNoteStatusMarks(display)})`;
+  }
+  if (note.status === 'artificial-harmonic') {
+    return `<${stripOuterNoteStatusMarks(display)}>`;
+  }
+  return display;
+}
+
+function stripOuterNoteStatusMarks(value) {
+  let result = String(value ?? '').trim();
+  while (result.length >= 2) {
+    const first = result[0];
+    const last = result[result.length - 1];
+    if (!((first === '(' && last === ')') || (first === '<' && last === '>'))) break;
+    result = result.slice(1, -1).trim();
+  }
+  return result;
 }
 
 function noteSelectionFromPosition(pos) {
@@ -2679,7 +2689,7 @@ function updateEditorPanel(message = '') {
     const action = button.dataset.editorAction;
     const eventTechnique = action === 'tech-let-ring' || action === 'tech-palm-mute';
     const rangeAction = action === 'beam-range';
-    const needsNote = /^(string|fret|ghost|ring|dead|tied-note|staccato|add-chord|beam|harmonic-|tech-)/.test(action) && !eventTechnique && !rangeAction;
+    const needsNote = /^(string|fret|ghost|ring|dead|tied-note|artificial-harmonic-note|staccato|add-chord|beam|harmonic-|tech-)/.test(action) && !eventTechnique && !rangeAction;
     const needsNoteOrRest = action === 'delete-note';  // Delete works for rest events too
     const needsEvent = /^(add-after|add-before|tech-let-ring|tech-palm-mute)$/.test(action);
     const needsSpanner = action === 'delete-spanner';
@@ -3254,6 +3264,7 @@ function applyEditorMutation(action, selection, payload) {
   if (action === 'ring') return toggleRing(selection);
   if (action === 'dead') return toggleDead(selection);
   if (action === 'tied-note') return toggleTiedNote(selection);
+  if (action === 'artificial-harmonic-note') return toggleArtificialHarmonicNote(selection);
   if (action === 'staccato') return toggleArticulation(selection, 'staccato');
   if (action === 'delete-note') return deleteSelectedNote(selection);
   if (action === 'add-after') return addNoteAfter(selection);
@@ -3305,6 +3316,14 @@ function syncNoteDisplay(note) {
   if (note.status === 'dead' || note.status === 'mute') note.display = 'x';
   else if (note.status === 'ghost' || note.status === 'tied') note.display = `(${note.fret})`;
   else note.display = String(note.fret);
+}
+
+function toggleArtificialHarmonicNote(selection) {
+  const note = selectedNote(selection);
+  if (!note) return false;
+  note.status = note.status === 'artificial-harmonic' ? 'normal' : 'artificial-harmonic';
+  syncNoteDisplay(note);
+  return true;
 }
 
 function toggleGhost(selection) {
@@ -4365,9 +4384,27 @@ function removeDanglingSpanners(removedIds) {
 }
 
 async function saveEditedScore() {
-  // Public demo: server-side save is disabled. Use Download button instead.
-  updateEditorPanel('Save disabled in public demo. Use Download to save a local copy.');
-  return;
+  if (!playback.score) return;
+  var url = appState.currentScoreUrl || appState.selectedScoreUrl;
+  // New score — auto-generate a filename from the title.
+  if (!url) {
+    var title = (playback.score.metadata?.title || 'Untitled').replace(/[^a-zA-Z0-9_一-鿿]/g, '_');
+    url = 'data/music/' + title + '.tab.json';
+    appState.currentScoreUrl = url;
+  }
+  const path = normalizeScoreUrl(url);
+  try {
+    const response = await fetch('/api/save-score', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path, score: playback.score })
+    });
+    if (!response.ok) throw new Error(await response.text());
+    editor.dirty = false;
+    updateEditorPanel('Saved JSON to ' + path);
+  } catch (error) {
+    updateEditorPanel('Save failed: start tools/dev_score_server.py to write back the loaded JSON. ' + error.message);
+  }
 }
 
 function downloadEditedScore() {
@@ -5939,7 +5976,8 @@ main();
 
     <h3>Mark</h3>
     <dl>
-      <dt>Parenthesized / Tied</dt><dd>Toggle tied display (15) and auto-create a tie from the previous matching note.</dd>
+      <dt>Tied</dt><dd>Toggle tied status (15) and auto-create a tie from the previous matching note.</dd>
+      <dt>A.H.</dt><dd>Toggle an artificial-harmonic note, rendered with angle brackets such as &lt;19&gt;.</dd>
       <dt>Ghost</dt><dd>Toggle ghost-note display (15). Ghost notes are silent during playback.</dd>
       <dt>Ring</dt><dd>Toggle ring status — draws a circle around the fret number and auto-fills the remaining measure duration.</dd>
       <dt>Dead</dt><dd>Toggle dead-note display (X) with normal duration — a timed muted strike.</dd>
