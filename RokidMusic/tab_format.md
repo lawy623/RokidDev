@@ -233,6 +233,8 @@ Use this for one-off marks anchored to a position: tempo text, section names, `s
 - `dead`: dead note / muted pluck, usually shown as `x` or `X`.
 - `ghost`: quiet/optional note, usually parenthesized.
 - `tied`: displayed as continuation or parenthesized tie destination.
+- `artificial-harmonic`: artificial-harmonic note, rendered with angle brackets
+  such as `<19>`. This note mark is independent of the `harmonic` effect below.
 - `cue`: small guide note.
 - `unknown`: parser saw a mark but cannot classify yet.
 

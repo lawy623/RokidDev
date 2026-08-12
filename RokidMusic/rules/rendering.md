@@ -3,6 +3,17 @@
 These rules are hard constraints shared by `tab_renderer.html` and the completed
 Android Canvas renderer in `app/src/main/java/com/rokid/music/render/TabRenderer.kt`.
 
+## Note Status Glyphs
+
+- `status = "artificial-harmonic"` renders the note's original fret/display
+  text inside angle brackets, for example `19` as `<19>`.
+- The brackets are part of the note glyph. Background masking, density
+  estimation, selection hit boxes, and spanner endpoints must account for the
+  complete bracketed text.
+- This status is a standalone note Mark. Do not treat it as the separate
+  `harmonic` effect that draws `N.H.` / `A.H.` / `P.H.` on the technique rail
+  and changes playback pitch.
+
 ## Timing-First Layout
 
 The renderer is not just a static score preview. It must support guided playback

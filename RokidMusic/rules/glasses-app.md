@@ -91,7 +91,8 @@ TabScore → metadata, defaults(ppq/bpm/tuning),
   Measure → id, startTick, durationTicks, timeSignature, events[], spanners[]
   Event   → type(note|rest), tick, duration(base/dots/tuplet),
             notes[], articulations[]
-  Note    → string(1-6), fret, status(normal|tied|ring|dead|ghost|mute)
+  Note    → string(1-6), fret,
+            status(normal|tied|artificial-harmonic|ring|dead|ghost|mute)
   Effect  → type, label, kind, to, toEvent
   Spanner → type(bend|slide|vibrato|bend-vibrato|hammer-on|pull-off|
             tie|slur|let-ring|palm-mute|trill), from/to,

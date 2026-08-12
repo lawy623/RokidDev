@@ -665,7 +665,8 @@
         <div class="editor-row editor-row-mark">
           <div class="editor-group editor-group-note-mark">
             <span class="editor-label">Mark</span>
-            <button data-editor-action="tied-note" type="button">Parenthesized/Tied</button>
+            <button data-editor-action="tied-note" type="button">Tied</button>
+            <button data-editor-action="artificial-harmonic-note" type="button">A.H.</button>
             <button data-editor-action="ghost" type="button">Ghost</button>
             <button data-editor-action="ring" type="button">Ring</button>
             <button data-editor-action="dead" type="button">Dead</button>
@@ -1328,7 +1329,7 @@ function estimateMeasureBeatWidth(measure) {
 
 function eventHalfWidth(event) {
   if (event.type === 'rest') return 8;
-  const texts = (event.notes || []).map(note => note.status === 'dead' ? 'X' : String(note.display || note.fret || '0'));
+  const texts = (event.notes || []).map(note => noteDisplayText(note));
   const longest = texts.reduce((max, text) => Math.max(max, text.length), 1);
   if (longest >= 4) return 13;
   if (longest === 3) return 11;
@@ -1749,8 +1750,7 @@ function hasArticulation(event, type) {
 }
 
 function noteTextBox(ctx, note, x, y) {
-  const display = note.display || String(note.fret);
-  const text = (note.status === 'dead' || note.status === 'mute') ? 'X' : display;
+  const text = noteDisplayText(note);
   const font = text.length > 2 ? 'bold 11px monospace' : 'bold 13px monospace';
   ctx.font = font;
   const metrics = ctx.measureText(text);
@@ -2383,10 +2383,26 @@ function editorNoteHit(point, renderIndex, tight = false) {
 
 function noteDisplayText(note) {
   if (!note) return '';
-  if (note.display != null) return String(note.display);
-  if (note.status === 'dead' || note.status === 'mute') return 'x';
-  if (note.status === 'tied' || note.status === 'ghost') return `(${note.fret ?? ''})`;
-  return String(note.fret ?? '');
+  if (note.status === 'dead' || note.status === 'mute') return 'X';
+  const display = note.display != null ? String(note.display) : String(note.fret ?? '');
+  if (note.status === 'tied' || note.status === 'ghost') {
+    return `(${stripOuterNoteStatusMarks(display)})`;
+  }
+  if (note.status === 'artificial-harmonic') {
+    return `<${stripOuterNoteStatusMarks(display)}>`;
+  }
+  return display;
+}
+
+function stripOuterNoteStatusMarks(value) {
+  let result = String(value ?? '').trim();
+  while (result.length >= 2) {
+    const first = result[0];
+    const last = result[result.length - 1];
+    if (!((first === '(' && last === ')') || (first === '<' && last === '>'))) break;
+    result = result.slice(1, -1).trim();
+  }
+  return result;
 }
 
 function noteSelectionFromPosition(pos) {
@@ -2673,7 +2689,7 @@ function updateEditorPanel(message = '') {
     const action = button.dataset.editorAction;
     const eventTechnique = action === 'tech-let-ring' || action === 'tech-palm-mute';
     const rangeAction = action === 'beam-range';
-    const needsNote = /^(string|fret|ghost|ring|dead|tied-note|staccato|add-chord|beam|harmonic-|tech-)/.test(action) && !eventTechnique && !rangeAction;
+    const needsNote = /^(string|fret|ghost|ring|dead|tied-note|artificial-harmonic-note|staccato|add-chord|beam|harmonic-|tech-)/.test(action) && !eventTechnique && !rangeAction;
     const needsNoteOrRest = action === 'delete-note';  // Delete works for rest events too
     const needsEvent = /^(add-after|add-before|tech-let-ring|tech-palm-mute)$/.test(action);
     const needsSpanner = action === 'delete-spanner';
@@ -3248,6 +3264,7 @@ function applyEditorMutation(action, selection, payload) {
   if (action === 'ring') return toggleRing(selection);
   if (action === 'dead') return toggleDead(selection);
   if (action === 'tied-note') return toggleTiedNote(selection);
+  if (action === 'artificial-harmonic-note') return toggleArtificialHarmonicNote(selection);
   if (action === 'staccato') return toggleArticulation(selection, 'staccato');
   if (action === 'delete-note') return deleteSelectedNote(selection);
   if (action === 'add-after') return addNoteAfter(selection);
@@ -3299,6 +3316,14 @@ function syncNoteDisplay(note) {
   if (note.status === 'dead' || note.status === 'mute') note.display = 'x';
   else if (note.status === 'ghost' || note.status === 'tied') note.display = `(${note.fret})`;
   else note.display = String(note.fret);
+}
+
+function toggleArtificialHarmonicNote(selection) {
+  const note = selectedNote(selection);
+  if (!note) return false;
+  note.status = note.status === 'artificial-harmonic' ? 'normal' : 'artificial-harmonic';
+  syncNoteDisplay(note);
+  return true;
 }
 
 function toggleGhost(selection) {
@@ -5951,7 +5976,8 @@ main();
 
     <h3>Mark</h3>
     <dl>
-      <dt>Parenthesized / Tied</dt><dd>Toggle tied display (15) and auto-create a tie from the previous matching note.</dd>
+      <dt>Tied</dt><dd>Toggle tied status (15) and auto-create a tie from the previous matching note.</dd>
+      <dt>A.H.</dt><dd>Toggle an artificial-harmonic note, rendered with angle brackets such as &lt;19&gt;.</dd>
       <dt>Ghost</dt><dd>Toggle ghost-note display (15). Ghost notes are silent during playback.</dd>
       <dt>Ring</dt><dd>Toggle ring status — draws a circle around the fret number and auto-fills the remaining measure duration.</dd>
       <dt>Dead</dt><dd>Toggle dead-note display (X) with normal duration — a timed muted strike.</dd>

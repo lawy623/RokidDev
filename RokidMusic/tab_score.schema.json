@@ -321,7 +321,7 @@
         "fret": { "type": "integer", "minimum": 0 },
         "display": { "type": ["string", "null"] },
         "pitch": { "type": ["string", "null"] },
-        "status": { "enum": ["normal", "dead", "mute", "ghost", "ring", "tied", "cue", "unknown"] },
+        "status": { "enum": ["normal", "dead", "mute", "ghost", "ring", "tied", "artificial-harmonic", "cue", "unknown"] },
         "leftHandFinger": { "type": ["string", "null"] },
         "rightHandFinger": { "type": ["string", "null"] },
         "effects": {

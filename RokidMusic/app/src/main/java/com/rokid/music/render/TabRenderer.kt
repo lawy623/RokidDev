@@ -194,9 +194,13 @@ class TabRenderer {
     }
 
     private fun activeTickRange(measure: Measure): Pair<Int, Int> {
-        if (measure.events.isEmpty()) return 0 to measure.durationTicks
-        val start = measure.events.minOf { it.tick }
-        val end = measure.events.maxOf { event ->
+        // A decorative mute is an overlay only: it must not retime the
+        // measure or change the amount of empty space around timed events.
+        val timedEvents = measure.events.filterNot(::isMuteEvent)
+        if (timedEvents.isEmpty()) return 0 to measure.durationTicks
+
+        val start = timedEvents.minOf { it.tick }
+        val end = timedEvents.maxOf { event ->
             if (event.notes.any { it.status == "ring" }) measure.durationTicks
             else event.tick + durationTicks(event.duration)
         }
@@ -362,10 +366,10 @@ class TabRenderer {
             val positions = event.notes.mapNotNull { layout.notePositions[it.id] }
             positions.forEach { drawNote(canvas, it) }
             drawArticulations(canvas, event, eventPos.x, sysIdx)
-            if (positions.isNotEmpty()) {
+            if (positions.isNotEmpty() && !isMuteEvent(event)) {
                 val group = event.beamGroup?.let { groups[it] }
                 val effectiveGroup = if ((group?.size ?: 0) >= 2) group else null
-                drawRhythm(canvas, eventPos.x, event.duration, effectiveGroup != null, isMuteEvent(event), sysIdx)
+                drawRhythm(canvas, eventPos.x, event.duration, effectiveGroup != null, sysIdx)
             }
         }
         drawBeams(canvas, measure, layout, sysIdx)
@@ -394,16 +398,20 @@ class TabRenderer {
 
     private fun noteDisplay(note: Note): String = when (note.status) {
         "dead", "mute" -> "X"
-        "tied", "ghost" -> "(${stripOuterParens(note.display.ifEmpty { note.fret.toString() })})"
+        "tied", "ghost" -> "(${stripOuterNoteStatusMarks(note.display.ifEmpty { note.fret.toString() })})"
+        "artificial-harmonic" -> "<${stripOuterNoteStatusMarks(note.display.ifEmpty { note.fret.toString() })}>"
         else -> {
             val raw = note.display.ifEmpty { note.fret.toString() }
-            if (note.effects.any { it.type == "ghost" }) "(${stripOuterParens(raw)})" else stripOuterParens(raw)
+            if (note.effects.any { it.type == "ghost" }) "(${stripOuterNoteStatusMarks(raw)})" else stripOuterNoteStatusMarks(raw)
         }
     }
 
-    private fun stripOuterParens(value: String): String {
+    private fun stripOuterNoteStatusMarks(value: String): String {
         var result = value.trim()
-        while (result.length >= 2 && result.first() == '(' && result.last() == ')') {
+        while (result.length >= 2 && (
+                (result.first() == '(' && result.last() == ')') ||
+                    (result.first() == '<' && result.last() == '>')
+                )) {
             result = result.substring(1, result.length - 1).trim()
         }
         return result
@@ -423,9 +431,9 @@ class TabRenderer {
     }
 
     private fun digitHalfWidth(note: Note): Float {
-        val raw = stripOuterParens(note.display.ifEmpty { note.fret.toString() })
-        numberPaint.textSize = if (raw.length > 2) 7.5f else 9.5f
-        return numberPaint.measureText(raw) * .5f
+        val display = noteDisplay(note)
+        numberPaint.textSize = if (display.length > 2) 7.5f else 9.5f
+        return numberPaint.measureText(display) * .5f
     }
 
     private fun smallTextHalfWidth(value: String): Float {
@@ -444,7 +452,6 @@ class TabRenderer {
         x: Float,
         duration: Duration,
         beamed: Boolean,
-        mute: Boolean,
         sysIdx: Int
     ) {
         val base = duration.base
@@ -455,8 +462,8 @@ class TabRenderer {
             val oval = RectF(x - 11f, stemBottom - 2f, x + 1f, stemBottom + 6f)
             if (base == 4) canvas.drawOval(oval, fillPaint) else canvas.drawOval(oval, linePaint)
         }
-        if (base >= 2 && !mute) canvas.drawLine(x + 1f, stemTop, x + 1f, stemBottom, linePaint)
-        if (base >= 8 && !beamed && !mute) drawFlags(canvas, x + 1f, stemBottom, beamLevels(base))
+        if (base >= 2) canvas.drawLine(x + 1f, stemTop, x + 1f, stemBottom, linePaint)
+        if (base >= 8 && !beamed) drawFlags(canvas, x + 1f, stemBottom, beamLevels(base))
 
         if (duration.dots > 0) {
             val dotY = if (beamed) stemBottom - 6f else stemBottom + 5f
@@ -477,7 +484,7 @@ class TabRenderer {
     }
 
     private fun beamGroups(measure: Measure): Map<String, List<Event>> = measure.events
-        .filter { it.type == "note" && !it.beamGroup.isNullOrEmpty() && it.duration.base >= 8 }
+        .filter { it.type == "note" && !isMuteEvent(it) && !it.beamGroup.isNullOrEmpty() && it.duration.base >= 8 }
         .groupBy { it.beamGroup!! }
         .mapValues { (_, value) -> value.sortedBy { it.tick } }
 

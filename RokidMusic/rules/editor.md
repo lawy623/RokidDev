@@ -68,7 +68,7 @@ Keep editor controls grouped by workflow, not by implementation detail.
 - Row 1: edit status text, with file actions (`Save JSON`, `Download`, `Undo`)
   aligned at the end of the same line, plus a `?` help button at the far right.
 - Row 2: pitch edits and rhythm values.
-- Row 3: note marks (tied, ghost, ring, dead, staccato, delete) and range
+- Row 3: note marks (tied, A.H., ghost, ring, dead, staccato, delete) and range
   target controls (`Set Target`, `Clear Target`).
 - Row 4: measure edits and note insertion defaults.
 - Row 5: beam grouping controls.
@@ -108,8 +108,11 @@ Note actions:
   `1..6`.
 - `Fret -` / `Fret +`: change the selected note fret within `0..24` and sync
   `display`.
-- `Parenthesized/Tied`: toggle tied/parenthesized display and auto-create a
+- `Tied`: toggle tied display and auto-create a
   matching `tie` when possible.
+- `A.H.`: toggle `note.status = "artificial-harmonic"`. The note is rendered
+  in angle brackets, such as `<19>`; this Mark is independent of the harmonic
+  effect in the Technique row.
 - `Ghost`: toggle ghost-note display. Ghost notes are silent during playback.
 - `Ring`: toggle ring status. Draws a circle around the fret number and
   auto-fills the remaining measure duration (effective tick = measure end).
@@ -275,9 +278,11 @@ For a selected note:
   source text.
 - `Ghost`: toggle `note.status = "ghost"` and display text like `(15)`.
 - `Dead`: toggle `note.status = "dead"` and `display = "x"`.
-- `Parenthesized/Tied`: toggle `note.status = "tied"` and display text like
+- `Tied`: toggle `note.status = "tied"` and display text like
   `(15)`. When possible, auto-create a `tie` from the previous matching
   string/fret note.
+- `A.H.`: toggle `note.status = "artificial-harmonic"` and display the fret in
+  angle brackets such as `<19>` without adding a technique-rail effect.
 - `Staccato`: toggle `event.articulations[{ type: "staccato" }]`.
 - `Delete note`: remove the note from its event; if the event has no notes
   left, remove the event and any spanners pointing at its notes.

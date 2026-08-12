@@ -85,6 +85,9 @@ Note `status` controls display and playback behavior:
 - `normal` — standard note, shows fret number.
 - `ghost` — silent during playback, shows `(15)`.
 - `tied` — connected to a previous note via a tie spanner, shows `(15)`.
+- `artificial-harmonic` — artificial-harmonic note mark, rendered as `<fret>`
+  such as `<19>`. It is independent of the `harmonic` per-note effect, does not
+  add a technique-rail label, and does not change playback by itself.
 - `ring` — draws a circle around the fret number. The note's effective
   tick duration is the remainder of the measure (fills to barline). The
   stored `duration` is kept as-is; playback and tick validation compute

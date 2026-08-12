@@ -269,6 +269,78 @@ For scrolling-score videos, also record:
 If the source shows measure numbers and any number is missing, duplicated, or
 ambiguous, tell the user exactly which measure/frame needs manual checking.
 
+### String Mapping: Prevent One-String-Up Errors
+
+String assignment is a high-risk part of video transcription. A draft must not
+assume that a note is on the line visually nearest to the top of its glyph, and
+must not infer string numbers from pitch alone. The source TAB geometry has
+priority.
+
+For every source crop or alignment group:
+
+1. Detect and record all six TAB lines, their y coordinates, adjacent-line
+   spacing, and detection confidence. Re-estimate these coordinates after a
+   scroll, zoom, vertical shift, or crop change; do not reuse absolute y values
+   from a previous frame.
+2. Make the direction explicit before reading notes: the top line is string 1
+   (the high E string) and the bottom line is string 6 (the low E string).
+   Record the mapping as `line_index: 0..5 -> string: 1..6` so an array reversal
+   cannot silently move every note by one string.
+3. Detect each complete fret-number glyph first, then use the glyph bounding-box
+   center y for string assignment. Do not use the top edge, bottom edge, or the
+   center of an individual character. Multi-digit frets such as `15` and
+   stacked/chord notes must be grouped before mapping.
+4. Compare the glyph center with the local six-line geometry. When a number
+   crosses or obscures a line, use the line intersection, glyph baseline, and
+   neighboring notes in the same event as evidence. Do not blindly choose the
+   nearest line above or below the glyph.
+5. Map chord notes independently. A single event can contain notes on several
+   strings, and a multi-character fret must never be split into multiple notes.
+6. Ignore the moving playback line or highlight when detecting TAB lines. If it
+   covers a note or line, use an adjacent clean frame from the same measure.
+
+Create a string-mapping overlay for inspection before writing the final JSON.
+The overlay should show the source crop with the six detected lines, labels
+`1` through `6`, each note glyph bounding box and center, and the assigned
+string number. Save overlays under:
+
+```text
+RokidMusic/data/tmp/<source-stem>/string_mapping/
+```
+
+At minimum, inspect the first, middle, and last measure of every visible system,
+plus measures containing high/low-string changes, chords, or large fret text.
+
+For each note, keep local candidates when confidence is low: the predicted
+string and its adjacent alternatives (`string - 1`, `string + 1` when valid).
+Build a per-measure and per-frame offset histogram. If a large majority of
+notes are consistently one string above or below the overlay evidence, mark the
+measure/system as a suspected systematic mapping error and re-check the line
+direction and y calibration before delivery. Do not silently correct the whole
+pass by pitch or by applying a global offset.
+
+Use standard tuning only as a sanity check when useful:
+
+```text
+1: E4   2: B3   3: G3   4: D3   5: A2   6: E2
+```
+
+Calculate the implied pitch from `string + fret` to find suspicious jumps or
+technique relationships, but never replace a clearly observed source string
+with a musically more convenient one. Image geometry is authoritative;
+`pitch` is only a validation signal.
+
+Special cases:
+
+- If TAB lines have low contrast, use local contrast enhancement or horizontal
+  projection before line detection.
+- If the notation scrolls, align the current crop first and then estimate line
+  positions in the aligned crop; global video coordinates are invalid.
+- If a note is between lines or the six-line fit is unstable, lower confidence,
+  preserve the source frame, and report the exact measure for user review.
+- Do not deliver a high-confidence string assignment when the overlay shows a
+  possible one-string systematic shift.
+
 ### 5. Transcribe The Musical Skeleton
 
 For each verified measure:
@@ -385,10 +457,19 @@ python3 -m json.tool RokidMusic/data/music/<slug>.tab.json >/tmp/<slug>.json
 
 ### Geometry Checks
 
-- Spot-check string mapping against source crops:
-  - top TAB line is string 1
-  - bottom TAB line is string 6
-  - fret numbers on boundary lines are assigned by center y.
+- For every source crop/alignment group, six TAB lines were detected or the
+  failure was explicitly reported.
+- The top-to-bottom mapping was verified as string 1 through string 6.
+- Each note was mapped using the complete fret glyph's bounding-box center y,
+  not a character edge or a fixed global y ratio.
+- Multi-digit frets and chord notes were grouped before string mapping.
+- Playback lines/highlights were excluded from line detection.
+- String overlays exist under `data/tmp/<source-stem>/string_mapping/` and were
+  checked at the start, middle, and end of each system.
+- A per-measure/per-frame adjacent-string offset check was performed; suspected
+  one-string-up or one-string-down systems are listed in the handoff.
+- Pitch/tuning checks were used only as sanity checks, never to override clear
+  TAB geometry.
 - Preserve source crop filenames for disputed measures.
 
 ### Beam And Technique Checks
@@ -432,6 +513,8 @@ When finished, report:
 - number of frames extracted and unique frames kept
 - measure count and any missing/ambiguous measure numbers
 - rhythm mismatch measures
+- string-mapping overlay path and any low-confidence or suspected offset
+  measures
 - technique areas that need user double-checking
 - local renderer URL.
 

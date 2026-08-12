@@ -37,6 +37,45 @@ Use this workflow for TikTok, Douyin, YouTube, or other video links.
 If the source is already a JPG or PDF, skip download/frame extraction and start
 at measure identification.
 
+## String Mapping Accuracy
+
+String numbers are read from the TAB geometry, not guessed from pitch. A common
+failure mode is a systematic one-string-up result, so every transcription must
+make the line direction and local y calibration explicit.
+
+- Detect all six TAB lines separately for each crop or alignment group. Refit
+  them after scrolling, zooming, vertical movement, or a crop change.
+- Verify the direction before reading notes: top line = string 1, bottom line =
+  string 6. Keep an explicit `line_index 0..5 -> string 1..6` mapping so an
+  inverted array cannot shift the whole score.
+- Detect the complete fret glyph first. Assign its string from the glyph
+  bounding-box center y and the local six-line geometry. Do not use the glyph's
+  top/bottom edge, a single character center, or a fixed y percentage.
+- Group multi-digit frets such as `15` and chord notes before assigning strings;
+  map each note in a chord independently.
+- Exclude the playback line/highlight from TAB-line detection. Use an adjacent
+  clean frame when it covers a line or note.
+- For scrolling videos, align the current crop before measuring y positions;
+  video-global coordinates are not valid.
+
+For debugging, create overlays showing the six lines, labels 1-6, note glyph
+boxes/centers, and assigned strings in:
+
+```text
+data/tmp/<source-stem>/string_mapping/
+```
+
+Inspect at least the beginning, middle, and end of each system, plus high/low
+string changes, chords, and large fret numbers. Keep adjacent-string
+candidates when confidence is low and calculate a per-measure/per-frame offset
+histogram. If most notes are consistently one string above or below the source,
+re-check the line direction and calibration before generating the final JSON.
+
+Standard tuning may be used as a sanity check (`1:E4, 2:B3, 3:G3, 4:D3, 5:A2,
+6:E2`), but it must never override clear visual TAB evidence. If the geometry is
+ambiguous, lower confidence and report the exact measure rather than silently
+applying a global string offset.
+
 ## Horizontally Scrolling Videos
 
 For horizontally scrolling score videos, unique frames overlap. Never assume

@@ -271,7 +271,7 @@ data class Note(
     val string: Int,          // 1-indexed, 1=highest
     val fret: Int,
     val display: String,
-    val status: String,       // normal | tied | ring | dead | ghost | mute
+    val status: String,       // normal | tied | artificial-harmonic | ring | dead | ghost | mute
     val effects: List<Effect>
 ) {
     companion object {
