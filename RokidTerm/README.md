@@ -95,10 +95,14 @@ FastAPI + SenseVoiceSmall 的服务端语音识别，作为 RokidTerm 组件维�
 
 ## 服务端会话助手（server/）
 
-对话选择器与并发会话（2026-08-11）由服务器端 `rokid-sessions` helper 驱动：
-每对话一个 tmux window（`rokid-<对话id>`），**切换 = attach 语义**（进程永不因切换被杀），
-删除对话 = kill-window（进程随之结束），空闲后台对话被清扫（默认 3 小时，三重信号防误杀，
-选中窗口永不清扫）。
+对话选择器与并发会话（2026-08-11，加固并真机验证 2026-08-13）由服务器端
+`rokid-sessions` helper 驱动：
+每对话一个 tmux window（`rokid-<对话id>`），**切换 = attach 语义**（进程永不因切换被杀，
+后台任务持续运行），删除对话 = kill-window（进程随之结束），空闲后台对话被清扫
+（默认 3 小时，三重信号防误杀，选中窗口永不清扫；App 连接时每 5 分钟自动执行一次）。
+窗口定位全部按**索引**（tmux 窗口名可不唯一，重名会使按名定位失效；清扫会自动把重名
+窗口改名回其真实对话）。新建对话的 id 收敛只认"切换后新出现"的会话，绝不串到旧对话。
+删除从未发过消息的新对话也视为成功（其窗口即对话本体）。
 
 换服务器一键部署 + 冒烟（目标需可 ssh/scp，装有 tmux、python3、procps、coreutils；
 lsof 仅回退路径可选）：
@@ -115,10 +119,14 @@ bash server/deploy.sh <user>@<host> /opt/claude/rokid-claude   # 自定义启动
   自动调一次，默认 180 分钟）。
 - 建议同时运行的对话 2-3 个（每个空闲进程约占 ~200-500MB 内存），不强制限制。
 - 本地 harness：`bash server/test/helper_test.sh [filter]`（macOS tmux + 假 claude，无需服务器）。
+- 界面 HUD（2026-08-12/13）：标题行右上角实时时钟（12 小时制 AM/PM，无空格）+
+  电池图标（百分比 + 充电 ⚡），电量经系统粘性广播推送、零轮询；ASR 结果末尾的
+  表情符号自动剥离（`stripTrailingEmoji`，Unicode 区块判定）。
 
 ## 已知限制 / 待办
 
-- 会话恢复 + 并发会话已实现（2026-08-11）：连接时 / 会话内两层对话选择器，基于服务端
-  `rokid-sessions` helper（list/status/switch/delete/export/adopt/sweep）+ 每会话滚动历史；
-  切换对话不再重启 Claude，后台任务持续运行；删除对话结束其 tmux window。
+- 会话恢复 + 并发会话已实现并真机验证（2026-08-13）：连接时 / 会话内两层对话选择器，
+  基于服务端 `rokid-sessions` helper（list/status/switch/delete/export/adopt/sweep）+
+  每会话滚动历史；切换对话/退出 App 后台任务持续运行、可随时切回；删除对话干净回收
+  （窗口/进程/文件）；空闲对话自动清扫（连接时每 5 分钟）。
 - 发布前：恢复 `FLAG_SECURE`、release 清理、移除调试路径。

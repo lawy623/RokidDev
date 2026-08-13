@@ -127,14 +127,38 @@ open_transcript_id() {
   basename "$t" .jsonl
 }
 
-# The conversation id a window's claude currently runs. Primary: an open
-# transcript fd on the claude process (or any claude descendant — the
-# launcher wrapper may not exec), which is CURRENT across in-session
-# /resume. Fallback: the launch cmdline (--resume <id> / --session-id
-# <id>), which is STALE after an in-session /resume. "" when unidentified.
+# index<TAB>name of all windows. tmux window names are NOT unique (a
+# duplicate name makes every name-based target fail with "can't find
+# window" — bug 2026-08-13), so ALL window targeting is by INDEX.
+list_windows() {
+  local session="$1"
+  # $'...' expands \t BEFORE tmux sees it — tmux 3.3a does NOT interpret
+  # backslash escapes inside -F format strings, and a literal "\t" would
+  # break the index/name field split (bug 2026-08-13).
+  tmux list-windows -t "$session" -F $'#{window_index}\t#{window_name}' 2>/dev/null
+}
+
+# First index whose name matches ("" when none).
+window_index() {
+  local session="$1" win="$2"
+  list_windows "$session" | awk -F '\t' -v w="$win" '$2==w {print $1; exit}'
+}
+
+# Index of the session's active (selected) window.
+active_window_index() {
+  local session="$1"
+  tmux display-message -p -t "$session" '#{active_window_index}' 2>/dev/null
+}
+
+# The conversation id a window's claude currently runs; $2 = window INDEX.
+# Primary: an open transcript fd on the claude process (or any claude
+# descendant — the launcher wrapper may not exec), which is CURRENT across
+# in-session /resume. Fallback: the launch cmdline (--resume <id> /
+# --session-id <id>), which is STALE after an in-session /resume. "" when
+# unidentified.
 window_conversation_id() {
-  local session="$1" win="$2" pane_pid id pid
-  pane_pid="$(tmux list-panes -t "$session:$win" -F '#{pane_pid}' 2>/dev/null | head -1)"
+  local session="$1" idx="$2" pane_pid id pid
+  pane_pid="$(tmux list-panes -t "$session:$idx" -F '#{pane_pid}' 2>/dev/null | head -1)"
   [ -n "$pane_pid" ] || return 0
   for pid in $(descendants "$pane_pid"); do
     ps -p "$pid" -o args= 2>/dev/null | grep -q '[c]laude' || continue
@@ -150,18 +174,12 @@ window_conversation_id() {
   return 0
 }
 
-# Exit 0 when the window has a live claude descendant.
+# Exit 0 when the window has a live claude descendant; $2 = window INDEX.
 window_has_claude() {
-  local session="$1" win="$2" pane_pid
-  pane_pid="$(tmux list-panes -t "$session:$win" -F '#{pane_pid}' 2>/dev/null | head -1)"
+  local session="$1" idx="$2" pane_pid
+  pane_pid="$(tmux list-panes -t "$session:$idx" -F '#{pane_pid}' 2>/dev/null | head -1)"
   [ -n "$pane_pid" ] || return 1
   [ -n "$(first_claude_descendant "$pane_pid")" ]
-}
-
-# Name of the session's active (selected) window.
-active_window() {
-  local session="$1"
-  tmux display-message -p -t "$session" '#{window_name}' 2>/dev/null
 }
 
 # Exit 0 when the session has at least one attached client.
@@ -170,12 +188,14 @@ session_attached() {
   [ -n "$(tmux list-clients -t "$session" 2>/dev/null)" ]
 }
 
-# First window whose claude currently runs conversation $2; "" when none.
+# Index of the first window whose claude currently runs conversation $2;
+# "" when none. Iterates INDEXES so duplicate window names cannot hide a
+# window.
 find_window_for() {
-  local session="$1" id="$2" win
-  for win in $(tmux list-windows -t "$session" -F '#{window_name}' 2>/dev/null); do
-    [ "$(window_conversation_id "$session" "$win")" = "$id" ] && { echo "$win"; return 0; }
-  done
+  local session="$1" id="$2" idx name
+  while IFS=$'\t' read -r idx name; do
+    [ "$(window_conversation_id "$session" "$idx")" = "$id" ] && { echo "$idx"; return 0; }
+  done < <(list_windows "$session")
   return 0
 }
 
@@ -193,6 +213,7 @@ cpu_ticks() {
     case "$v" in
       *:*) mm="${v%%:*}"; v="${v#*:}"; ss="${v%%.*}"; cc="${v#*.}"; cc="${cc:-0}"
            echo $(( mm * 6000 + ss * 100 + ${cc:0:2} )) ;;
+      ""|-|" "*) echo 0 ;;   # dead/gone process: ps prints "-" (Linux)
       *)    echo $(( ${v:-0} )) ;;
     esac
   }
@@ -240,21 +261,22 @@ cmd_list() {
 }
 
 cmd_status() {
-  local session="$1" win pane_pid claude_pid cwd id
+  local session="$1" idx pane_pid claude_pid cwd id win_name
   tmux has-session -t "$session" 2>/dev/null || { echo "none"; return 0; }
-  win="$(active_window "$session")"
-  [ -n "$win" ] || { echo "none"; return 0; }
-  pane_pid="$(tmux list-panes -t "$session:$win" -F '#{pane_pid}' 2>/dev/null | head -1)"
+  idx="$(active_window_index "$session")"
+  [ -n "$idx" ] || { echo "none"; return 0; }
+  pane_pid="$(tmux list-panes -t "$session:$idx" -F '#{pane_pid}' 2>/dev/null | head -1)"
   [ -n "$pane_pid" ] || { echo "none"; return 0; }
   claude_pid="$(first_claude_descendant "$pane_pid")"
   [ -n "$claude_pid" ] || { echo "none"; return 0; }
   cwd="$(pid_cwd "$claude_pid")"
   [ -n "$cwd" ] || { echo "none"; return 0; }
-  id="$(window_conversation_id "$session" "$win")"
+  id="$(window_conversation_id "$session" "$idx")"
+  win_name="$(tmux display-message -p -t "$session:$idx" '#{window_name}' 2>/dev/null)"
   # Self-healing (design §3.4): keep the window name in sync with the
   # conversation it actually runs (in-session /resume leaves a stale name).
-  if [ -n "$id" ] && [ "$win" != "rokid-$id" ]; then
-    tmux rename-window -t "$session:$win" "rokid-$id" 2>/dev/null
+  if [ -n "$id" ] && [ "$win_name" != "rokid-$id" ]; then
+    tmux rename-window -t "$session:$idx" "rokid-$id" 2>/dev/null
   fi
   printf 'pid\t%s\t%s\t%s\n' "$claude_pid" "$cwd" "${id:--}"
 }
@@ -299,8 +321,11 @@ cmd_switch() {
   # Attach semantics (design 2026-08-11 §3.3): a conversation's window is
   # SELECTED, never restarted, when its claude is alive; dead windows are
   # respawned in place; missing windows are created. Only the session-level
-  # first launch (no session at all) creates the session.
-  local win
+  # first launch (no session at all) creates the session. All window
+  # targeting is by INDEX — tmux window names are not unique, and a
+  # duplicate name makes name-based targets fail with "can't find window"
+  # (bug 2026-08-13).
+  local win_idx
   if ! tmux has-session -t "$session" 2>/dev/null; then
     tmux new-session -d -s "$session" -n "rokid-$id" -c "$dir_resolved" "$launch_cmd" \
       || { printf 'error\t%s\n' "tmux create failed"; return 1; }
@@ -309,45 +334,49 @@ cmd_switch() {
     # session and drop the app's attach (design 2026-08-11 §4).
     tmux set-option -t "$session" remain-on-exit on 2>/dev/null
   else
-    win="$(find_window_for "$session" "$id")"
-    if [ -n "$win" ]; then
+    win_idx="$(find_window_for "$session" "$id")"
+    if [ -n "$win_idx" ]; then
       # Found by identification: sync the name (in-session /resume or a
       # legacy window left a stale name) and select.
-      [ "$win" = "rokid-$id" ] || tmux rename-window -t "$session:$win" "rokid-$id" 2>/dev/null
-      tmux select-window -t "$session:$win"
-    elif tmux list-windows -t "$session" -F '#{window_name}' 2>/dev/null | grep -qx "rokid-$id"; then
-      # Named window exists; respawn its claude when dead (kill + relaunch),
-      # else select as-is.
-      local pane_pid claude_pid
-      pane_pid="$(tmux list-panes -t "$session:rokid-$id" -F '#{pane_pid}' 2>/dev/null | head -1)"
-      [ -n "$pane_pid" ] || { printf 'error\t%s\n' "no tmux pane"; return 1; }
-      claude_pid="$(first_claude_descendant "$pane_pid")"
-      if [ -n "$claude_pid" ]; then
-        kill "$claude_pid" 2>/dev/null
-        sleep 1
-        kill -0 "$claude_pid" 2>/dev/null && kill -9 "$claude_pid" 2>/dev/null
-        sleep 1
-      fi
-      if ! tmux respawn-pane -t "$session:rokid-$id" -k -c "$dir_resolved" "$launch_cmd" 2>/dev/null; then
-        local qdir
-        qdir="$(printf '%q' "$dir_resolved")"
-        tmux send-keys -t "$session:rokid-$id" "cd $qdir && $launch_cmd" Enter
-      fi
-      tmux select-window -t "$session:rokid-$id"
+      local found_name
+      found_name="$(tmux display-message -p -t "$session:$win_idx" '#{window_name}' 2>/dev/null)"
+      [ "$found_name" = "rokid-$id" ] || tmux rename-window -t "$session:$win_idx" "rokid-$id" 2>/dev/null
+      tmux select-window -t "$session:$win_idx"
     else
-      tmux new-window -d -n "rokid-$id" -c "$dir_resolved" "$launch_cmd" \
-        || { printf 'error\t%s\n' "tmux create failed"; return 1; }
-      tmux select-window -t "$session:rokid-$id"
+      win_idx="$(window_index "$session" "rokid-$id")"
+      if [ -n "$win_idx" ]; then
+        # Named window exists: respawn ONLY when its claude is dead. An
+        # ALIVE claude is selected as-is (attach semantics — bug 2026-08-13:
+        # the old code killed it unconditionally, restarting a running
+        # conversation on every re-select).
+        local pane_pid claude_pid
+        pane_pid="$(tmux list-panes -t "$session:$win_idx" -F '#{pane_pid}' 2>/dev/null | head -1)"
+        [ -n "$pane_pid" ] || { printf 'error\t%s\n' "no tmux pane"; return 1; }
+        claude_pid="$(first_claude_descendant "$pane_pid")"
+        if [ -z "$claude_pid" ]; then
+          if ! tmux respawn-pane -t "$session:$win_idx" -k -c "$dir_resolved" "$launch_cmd" 2>/dev/null; then
+            local qdir
+            qdir="$(printf '%q' "$dir_resolved")"
+            tmux send-keys -t "$session:$win_idx" "cd $qdir && $launch_cmd" Enter
+          fi
+        fi
+        tmux select-window -t "$session:$win_idx"
+      else
+        tmux new-window -n "rokid-$id" -c "$dir_resolved" "$launch_cmd" \
+          || { printf 'error\t%s\n' "tmux create failed"; return 1; }
+        # new-window without -d selects the new window (no name target).
+      fi
     fi
   fi
 
   # Verify: a Claude process whose cwd is the target dir (poll <= 15 s).
-  # Targets the ACTIVE window (the one just selected) — with multiple
-  # windows, a bare session target would poll the wrong pane.
+  # Targets the ACTIVE window (the one just selected) by INDEX.
   local i ok=""
   for i in $(seq 1 30); do
-    local pane_pid2 claude_pid2 cwd2
-    pane_pid2="$(tmux list-panes -t "$session:" -F '#{pane_pid}' 2>/dev/null | head -1)"
+    local active_idx pane_pid2 claude_pid2 cwd2
+    active_idx="$(active_window_index "$session")"
+    [ -n "$active_idx" ] || break
+    pane_pid2="$(tmux list-panes -t "$session:$active_idx" -F '#{pane_pid}' 2>/dev/null | head -1)"
     [ -n "$pane_pid2" ] || break
     claude_pid2="$(first_claude_descendant "$pane_pid2")"
     if [ -n "$claude_pid2" ]; then
@@ -393,7 +422,7 @@ cmd_delete() {
   else
     printf 'error\t%s\n' "path outside base"; return 1
   fi
-  local enc target win
+  local enc target win_idx
   enc="$(encode "$dir_resolved")"
   target="$PROJECTS_DIR/$enc/$id.jsonl"
   # The conversation's window (design 2026-08-11 §3.3): found by
@@ -401,26 +430,42 @@ cmd_delete() {
   # its claude is dead. A window named rokid-<id> that is ALIVE with a
   # different conversation is stale — it belongs to that other conversation
   # and is never killed here (it self-heals when THAT conversation is
-  # deleted or switched).
-  win="$(find_window_for "$session" "$id")"
-  if [ -z "$win" ] && tmux list-windows -t "$session" -F '#{window_name}' 2>/dev/null | grep -qx "rokid-$id"; then
-    local pane_pid claude_pid
-    pane_pid="$(tmux list-panes -t "$session:rokid-$id" -F '#{pane_pid}' 2>/dev/null | head -1)"
-    claude_pid="$(first_claude_descendant "$pane_pid")"
-    [ -z "$claude_pid" ] && win="rokid-$id"   # dead window is the conversation's
+  # deleted or switched). All targeting by INDEX (duplicate names break
+  # name-based targets — bug 2026-08-13).
+  win_idx="$(find_window_for "$session" "$id")"
+  if [ -z "$win_idx" ]; then
+    local named_idx
+    named_idx="$(window_index "$session" "rokid-$id")"
+    if [ -n "$named_idx" ]; then
+      local pane_pid claude_pid
+      pane_pid="$(tmux list-panes -t "$session:$named_idx" -F '#{pane_pid}' 2>/dev/null | head -1)"
+      claude_pid="$(first_claude_descendant "$pane_pid")"
+      [ -z "$claude_pid" ] && win_idx="$named_idx"   # dead window is the conversation's
+    fi
   fi
-  if [ -n "$win" ]; then
+  local killed=""
+  if [ -n "$win_idx" ]; then
     # Refuse the ATTACHED conversation (defense in depth; the app also
     # blocks the ▶ row). Only when the window is the session's active
     # window AND a client is attached.
-    if [ "$win" = "$(active_window "$session")" ] && session_attached "$session"; then
+    if [ "$win_idx" = "$(active_window_index "$session")" ] && session_attached "$session"; then
       printf 'error\t%s\n' "active session"
       return 1
     fi
-    tmux kill-window -t "$session:$win" 2>/dev/null
+    tmux kill-window -t "$session:$win_idx" 2>/dev/null
+    killed="1"
   fi
-  [ -f "$target" ] || { printf 'error\t%s\n' "not found"; return 1; }
-  rm -f "$target" || { printf 'error\t%s\n' "delete failed"; return 1; }
+  # A never-messaged new chat has NO jsonl — its window IS the conversation;
+  # killing it is the whole delete (bug 2026-08-12: the old order killed the
+  # window then errored "not found", leaving the app's picker row + local
+  # files orphaned). "not found" now only fires for phantom conversations
+  # (no window AND no transcript).
+  if [ -f "$target" ]; then
+    rm -f "$target" || { printf 'error\t%s\n' "delete failed"; return 1; }
+  elif [ -z "$killed" ]; then
+    printf 'error\t%s\n' "not found"
+    return 1
+  fi
   printf 'ok\t%s\t%s\n' "$enc" "$id"
 }
 
@@ -433,17 +478,18 @@ cmd_adopt() {
   case "$new_id" in
     *[!A-Za-z0-9_-]*) printf 'error\t%s\n' "bad session id"; return 1 ;;
   esac
-  local win pane_pid claude_pid cwd
-  win="$(active_window "$session")"
-  [ -n "$win" ] || { printf 'error\t%s\n' "no active window"; return 1; }
-  pane_pid="$(tmux list-panes -t "$session:$win" -F '#{pane_pid}' 2>/dev/null | head -1)"
+  local idx win_name pane_pid claude_pid cwd
+  idx="$(active_window_index "$session")"
+  [ -n "$idx" ] || { printf 'error\t%s\n' "no active window"; return 1; }
+  pane_pid="$(tmux list-panes -t "$session:$idx" -F '#{pane_pid}' 2>/dev/null | head -1)"
   [ -n "$pane_pid" ] || { printf 'error\t%s\n' "no tmux pane"; return 1; }
   claude_pid="$(first_claude_descendant "$pane_pid")"
   [ -n "$claude_pid" ] || { printf 'error\t%s\n' "no claude"; return 1; }
   cwd="$(pid_cwd "$claude_pid")"
   [ "$cwd" = "$dir" ] || { printf 'error\t%s\n' "cwd mismatch"; return 1; }
-  if [ "$win" != "rokid-$new_id" ]; then
-    tmux rename-window -t "$session:$win" "rokid-$new_id" 2>/dev/null \
+  win_name="$(tmux display-message -p -t "$session:$idx" '#{window_name}' 2>/dev/null)"
+  if [ "$win_name" != "rokid-$new_id" ]; then
+    tmux rename-window -t "$session:$idx" "rokid-$new_id" 2>/dev/null \
       || { printf 'error\t%s\n' "rename failed"; return 1; }
   fi
   printf 'ok\t%s\t%s\n' "$(encode "$dir")" "$new_id"
@@ -452,10 +498,10 @@ cmd_adopt() {
 # Cheap idle pre-filter (design 2026-08-11 §3.6): a window is an idle
 # candidate when its claude is dead, or (JSONL old AND no descendant
 # children). Unknowns are treated as BUSY (never kill what we cannot prove
-# idle). Exit 0 = idle candidate.
+# idle). $2 = window INDEX. Exit 0 = idle candidate.
 idle_fast() {
-  local session="$1" win="$2" idle_secs="$3" pane_pid claude_pid cwd id jsonl
-  pane_pid="$(tmux list-panes -t "$session:$win" -F '#{pane_pid}' 2>/dev/null | head -1)"
+  local session="$1" idx="$2" idle_secs="$3" pane_pid claude_pid cwd id jsonl
+  pane_pid="$(tmux list-panes -t "$session:$idx" -F '#{pane_pid}' 2>/dev/null | head -1)"
   [ -n "$pane_pid" ] || return 0
   claude_pid="$(first_claude_descendant "$pane_pid")"
   [ -n "$claude_pid" ] || return 0
@@ -465,7 +511,7 @@ idle_fast() {
     return 1   # child present -> busy, not even a candidate
   done
   cwd="$(pid_cwd "$claude_pid")"
-  id="$(window_conversation_id "$session" "$win")"
+  id="$(window_conversation_id "$session" "$idx")"
   if [ -n "$cwd" ] && [ -n "$id" ]; then
     jsonl="$PROJECTS_DIR/$(encode "$cwd")/$id.jsonl"
     if [ -f "$jsonl" ]; then
@@ -482,20 +528,32 @@ idle_fast() {
 # the CPU sample sleeps ONCE for all candidates. The ACTIVE window is never
 # swept (the user is attached to it). Never touches JSONL — a swept
 # conversation stays in the picker and re-select respawns it via switch.
-# Output: `swept\t<count>`.
+# Also self-heals duplicate window names (bug 2026-08-13: tmux allows
+# duplicate names, which blind name-based targeting): the later duplicate
+# is renamed to its identified conversation id. Output: `swept\t<count>`.
 cmd_sweep() {
   local session="$1" base="$2" idle_min="${3:-180}"
   local idle_secs=$(( idle_min * 60 ))
   tmux has-session -t "$session" 2>/dev/null || { echo "swept	0"; return 0; }
-  local active win count=0
-  active="$(active_window "$session")"
+  local active_idx idx name count=0 seen=""
+  active_idx="$(active_window_index "$session")"
   local -a candidates=()
-  for win in $(tmux list-windows -t "$session" -F '#{window_name}' 2>/dev/null); do
-    [ "$win" = "$active" ] && continue
-    if idle_fast "$session" "$win" "$idle_secs"; then
-      candidates+=("$win")
+  while IFS=$'\t' read -r idx name; do
+    # Duplicate-name self-heal: a repeated window name gets renamed to the
+    # conversation its claude actually runs (if identifiable).
+    if [ -n "$seen" ] && case " $seen " in *" $name "*) true;; *) false;; esac; then
+      local dup_id
+      dup_id="$(window_conversation_id "$session" "$idx")"
+      if [ -n "$dup_id" ] && [ "$name" != "rokid-$dup_id" ]; then
+        tmux rename-window -t "$session:$idx" "rokid-$dup_id" 2>/dev/null
+      fi
     fi
-  done
+    seen="$seen $name"
+    [ "$idx" = "$active_idx" ] && continue
+    if idle_fast "$session" "$idx" "$idle_secs"; then
+      candidates+=("$idx")
+    fi
+  done < <(list_windows "$session")
   if [ ${#candidates[@]} -gt 0 ]; then
     sleep "${SWEEP_SAMPLE_SLEEP:-120}"
     local w t1 t2 s1 s2 wall cpus pane_pid claude_pid

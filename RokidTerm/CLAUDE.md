@@ -367,19 +367,40 @@ Verified on the current glasses and Tencent Cloud server:
   rounds), Type-something free text (digit protocol), long drafts.
   Future AskUserQuestion layout variants are handled per real case
   (contract notes in `rules/input.md` Part 5).
-- **Concurrent sessions (option B)** — implemented 2026-08-11: one tmux
-  window per conversation (`rokid-<id>`) in the shared session; `switch` is
-  attach semantics (never restarts a live process), `status` reports the
-  active window and self-heals stale window names, `delete` kills the
-  conversation's window, `adopt` renames on new-chat id convergence, and
-  `sweep` ends idle background conversations (default 3 h, triple-signal
-  guard: JSONL age + child presence + CPU sampling; the active window is
-  never swept). Spec: `docs/superpowers/specs/2026-08-11-concurrent-
-  sessions-design.md`. **The server needs the UPDATED helper** — deploy
-  with `bash server/deploy.sh <user>@<host>` (env overrides
+- **Concurrent sessions (option B)** — implemented 2026-08-11, hardened
+  and hardware-verified 2026-08-13: one tmux window per conversation
+  (`rokid-<id>`) in the shared session; `switch` is attach semantics (never
+  restarts a live process), `status` reports the active window and
+  self-heals stale window names, `delete` kills the conversation's window,
+  `adopt` renames on new-chat id convergence, and `sweep` ends idle
+  background conversations (default 3 h, triple-signal guard: JSONL age +
+  child presence + CPU sampling; the active window is never swept). All
+  window targeting is by INDEX — tmux window names are not unique, and a
+  duplicate name breaks name-based targets ("can't find window"); the
+  sweep self-heals duplicates by renaming them to their identified
+  conversation. New-chat discover converges ONLY to sessions that appeared
+  after the switch (never an arbitrary old conversation — the "new chat
+  reusing old id/history" bug). Deleting a never-messaged new chat
+  succeeds (its window IS the conversation). Verified on-device:
+  background tasks survive switches/app-exit, two conversations run
+  concurrently, delete cleans windows/processes/files, idle sweep fires
+  every 5 min while connected, dead processes respawn via `--resume`.
+  Spec: `docs/superpowers/specs/2026-08-11-concurrent-sessions-design.md`.
+  **The server needs the UPDATED helper** — deploy with
+  `bash server/deploy.sh <user>@<host>` (env overrides
   `ROKID_SESSIONS_PROJECTS_DIR` / `ROKID_SESSIONS_LAUNCHER` for other
   servers). The app's local isolation (per-conversation scrollback + input
   history) is unchanged.
+- **HUD: clock + battery (2026-08-12/13)** — top-right on the title line:
+  12-hour AM/PM clock ("3:45PM", no space, 30 s ticker so the minute flips
+  while idle) + battery glyph with percent and a ⚡ bolt right of it while
+  charging. Battery is pushed via the sticky `ACTION_BATTERY_CHANGED`
+  broadcast (fires immediately on register, then on change — zero polling).
+- **ASR emoji strip (2026-08-13)** — the server ASR model appends a
+  trailing emoji to results; `stripTrailingEmoji` removes a trailing emoji
+  run (Unicode block ranges + ZWJ/skin-tone/keycap/variation-selector
+  sequences, including ©️/™️-style text-presentation emoji) before the text
+  lands in the composer draft. Pure function, 13 JVM tests.
 - ~~Local terminal history too short / not persistent~~ — **fixed
   2026-08-06**: root cause was the shared-array bug above; baseline-based
   detection deployed and hardware-verified (single-session history grows

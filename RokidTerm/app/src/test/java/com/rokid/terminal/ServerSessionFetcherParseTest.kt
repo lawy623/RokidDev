@@ -80,38 +80,45 @@ class ServerSessionFetcherParseTest {
     }
 
     @Test
-    fun newestUnboundSessionSkipsTempAndPrevious() {
+    fun firstNewSessionPicksOnlyNewlyAppeared() {
+        // Old conversations (prev + others) must never be converged onto a
+        // new chat — only a session that APPEARED after the switch (bug
+        // 2026-08-13).
         val folder = RemoteFolder(
             "/srv/proj", "-srv-proj", listOf(
                 RemoteSession("prev-id", "old", 1000L),
-                RemoteSession("temp-id", "new chat", 2000L),
-                RemoteSession("real-id", "title", 3000L),
+                RemoteSession("other-old", "old2", 2000L),
+                RemoteSession("real-id", "new", 3000L),
             ),
         )
-        val result = ServerSessionFetcher.newestUnboundSession(folder, "temp-id", "prev-id")
-        assertEquals("real-id", result?.id)
+        val baseline = setOf("prev-id", "other-old")
+        assertEquals("real-id", ServerSessionFetcher.firstNewSession(folder, baseline, "temp-id")?.id)
     }
 
     @Test
-    fun newestUnboundSessionNullWhenOnlyTempOrPrevious() {
+    fun firstNewSessionNullWhenNothingNewAppeared() {
         val folder = RemoteFolder(
             "/srv/proj", "-srv-proj", listOf(
-                RemoteSession("temp-id", "new chat", 2000L),
+                RemoteSession("prev-id", "old", 1000L),
+                RemoteSession("other-old", "old2", 2000L),
             ),
         )
-        assertNull(ServerSessionFetcher.newestUnboundSession(folder, "temp-id", "prev-id"))
-        val onlyPrev = RemoteFolder("/srv/proj", "-srv-proj", listOf(RemoteSession("prev-id", "old", 1000L)))
-        assertNull(ServerSessionFetcher.newestUnboundSession(onlyPrev, "temp-id", "prev-id"))
+        // Baseline covers everything -> nothing newly appeared.
+        assertNull(ServerSessionFetcher.firstNewSession(folder, setOf("prev-id", "other-old"), "temp-id"))
+        // An EMPTY baseline means every session is "new" (a brand-new
+        // folder) — the first one qualifies.
+        assertEquals("prev-id", ServerSessionFetcher.firstNewSession(folder, emptySet(), "temp-id")?.id)
     }
 
     @Test
-    fun newestUnboundSessionPicksNewestOfSeveral() {
+    fun firstNewSessionSkipsThePlaceholderId() {
+        // Server honored --session-id: the new file IS the placeholder id —
+        // nothing to converge.
         val folder = RemoteFolder(
             "/srv/proj", "-srv-proj", listOf(
-                RemoteSession("a-id", "a", 1000L),
-                RemoteSession("b-id", "b", 4000L),
+                RemoteSession("temp-id", "new chat", 3000L),
             ),
         )
-        assertEquals("b-id", ServerSessionFetcher.newestUnboundSession(folder, "temp-id", null)?.id)
+        assertNull(ServerSessionFetcher.firstNewSession(folder, setOf("prev-id"), "temp-id"))
     }
 }

@@ -1,9 +1,14 @@
 package com.rokid.terminal
 
 import android.Manifest
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.ApplicationInfo
 import android.app.Activity
 import android.content.pm.PackageManager
+import android.os.BatteryManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -78,6 +83,27 @@ class MainActivity : Activity() {
      *  (user 2026-08-07). */
     private var switchInFlight = false
 
+    /** Battery HUD state (user 2026-08-12): -1 = unknown (not drawn). */
+    private var batteryLevel = -1
+    private var batteryCharging = false
+
+    /** Battery HUD (user 2026-08-12): push-updated via the sticky
+     *  ACTION_BATTERY_CHANGED broadcast (fires immediately on register). */
+    private val batteryReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            val level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+            val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
+            if (scale > 0 && level >= 0) batteryLevel = level * 100 / scale
+            val status = intent.getIntExtra(
+                BatteryManager.EXTRA_STATUS,
+                BatteryManager.BATTERY_STATUS_UNKNOWN,
+            )
+            batteryCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
+                status == BatteryManager.BATTERY_STATUS_FULL
+            terminalView.setBattery(batteryLevel, batteryCharging)
+        }
+    }
+
     /** Terminal-history swipe pair-dedup (TP fast swipes emit DPAD pairs). */
     private var lastTerminalSwipe: String? = null
     private var lastTerminalSwipeTime = 0L
@@ -122,7 +148,6 @@ class MainActivity : Activity() {
      */
     private var newSessionPending = false
     private var newSessionFolderPath: String? = null
-    private var newSessionPreviousId: String? = null
 
     private var lastScrollbackCount = -1
     private var scrollbackStore: ScrollbackStore? = null
@@ -226,6 +251,9 @@ class MainActivity : Activity() {
         mainHandler.post(sessionSyncRunnable)
         mainHandler.postDelayed(sweepRunnable, SWEEP_INTERVAL_MS)
         mainHandler.post(panelExitRunnable)
+        // Sticky broadcast: delivers the current state immediately on
+        // registration, then on every change (battery HUD, user 2026-08-12).
+        registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
         registerReceiver(
             inputDeviceReceiver,
             android.content.IntentFilter(ACTION_INPUT_DEVICE_CHANGED),
@@ -380,6 +408,7 @@ class MainActivity : Activity() {
         mainHandler.removeCallbacks(keyboardPoll)
         mainHandler.removeCallbacks(sessionSyncRunnable)
         mainHandler.removeCallbacks(sweepRunnable)
+        runCatching { unregisterReceiver(batteryReceiver) }
         runCatching { unregisterReceiver(inputDeviceReceiver) }
         clearPrimaryGesture()
         speech.destroy()
@@ -1311,7 +1340,7 @@ class MainActivity : Activity() {
                 val path = newSessionFolderPath
                 val tempId = scrollbackSessionId
                 if (path != null && tempId != null) {
-                    discoverNewSessionId(path, tempId, newSessionPreviousId)
+                    discoverNewSessionId(path, tempId)
                 }
             }
         }
@@ -2433,7 +2462,6 @@ class MainActivity : Activity() {
             // conversation's scrollback into the new chat (2026-08-07).
             newSessionPending = true
             newSessionFolderPath = folderPath
-            newSessionPreviousId = previousSessionId
         } else {
             newSessionPending = false
         }
@@ -2459,7 +2487,7 @@ class MainActivity : Activity() {
                     // file appears only later) — discover and correct the
                     // binding so resumes work and rows don't duplicate
                     // (bug 1, 2026-08-07).
-                    if (isNew) discoverNewSessionId(folderPath, sessionId, previousSessionId)
+                    if (isNew) discoverNewSessionId(folderPath, sessionId)
                     // Resumed conversations get their FULL transcript pulled
                     // into the local scrollback (the server replay is a
                     // redraw, not a scroll, so nothing is captured locally —
@@ -2616,25 +2644,30 @@ class MainActivity : Activity() {
      * (--session-id can be ignored), which caused duplicate-looking rows,
      * failed resumes, and a wrong ▶ marker (bug 1, 2026-08-07). Re-list
      * polling (2026-08-11) is independent of the process's open-file state,
-     * unlike `status`-based discovery. Session ids are never logged.
+     * unlike `status`-based discovery. The FIRST poll snapshots the
+     * pre-message session set; convergence happens only for ids that
+     * APPEARED afterwards — never for arbitrary old conversations (bug
+     * 2026-08-13: "newest other session" reused old ids/history). Session
+     * ids are never logged.
      */
-    private fun discoverNewSessionId(folderPath: String, tempSessionId: String, previousSessionId: String?) {
+    private fun discoverNewSessionId(folderPath: String, tempSessionId: String) {
         val endpoint = activeEndpoint ?: return
         val fetcher = sessionFetcher ?: return
         val folderKey = ServerSessionFetcher.encodeDir(folderPath)
         Thread {
+            var baseline: Set<String>? = null
             for (attempt in 0 until 6) {
                 Thread.sleep(2000)
                 val folders = fetcher.listSessions(endpoint.workspace) ?: continue
                 val folder = folders.firstOrNull { it.encodedDir == folderKey } ?: continue
-                val real = ServerSessionFetcher.newestUnboundSession(folder, tempSessionId, previousSessionId)
-                    ?: continue
+                val ids = folder.sessions.map { it.id }.toSet()
+                if (baseline == null) {
+                    baseline = ids
+                    continue
+                }
+                val real = ServerSessionFetcher.firstNewSession(folder, baseline, tempSessionId) ?: continue
                 val realId = real.id
                 if (realId.isEmpty()) continue
-                // Before the new chat's first message the folder's newest is
-                // still the previous conversation — never "correct" back to
-                // it (bug 1, 2026-08-07; also excluded by the filter above).
-                if (realId == previousSessionId) continue
                 runOnUiThread {
                     if (scrollbackSessionId == tempSessionId) {
                         persistScrollback()
@@ -2822,8 +2855,11 @@ class MainActivity : Activity() {
         sweepInFlight = true
         Thread {
             try {
-                val count = fetcher.sweepIdle(endpoint.sessionName, endpoint.workspace)
-                android.util.Log.i("RokidTerminal", "idle sweep: ${count ?: -1} ended")
+                val raw = fetcher.sweepIdle(endpoint.sessionName, endpoint.workspace)
+                // Parse the count — the raw helper output contains a tab
+                // that splits the log line (cosmetic bug 2026-08-13).
+                val count = raw?.let(ServerSessionFetcher::parseSweepResult) ?: -1
+                android.util.Log.i("RokidTerminal", "idle sweep: $count ended")
             } catch (error: Exception) {
                 android.util.Log.w(
                     "RokidTerminal",

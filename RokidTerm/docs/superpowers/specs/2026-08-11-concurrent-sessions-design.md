@@ -182,7 +182,9 @@ picker (JSONL intact) and re-select respawns via `switch` case (c).
 ## 4. Behavior contract (user-confirmed 2026-08-11)
 
 - Switching = attach; the running Claude is never restarted by a switch.
-- Re-selecting the CURRENT conversation is a no-op switch (today it restarts).
+- Re-selecting the current conversation never restarts the process (the
+  view re-attaches via the normal reconnect; no instant-reload guarantee —
+  user note 2026-08-12).
 - A conversation's dead Claude stays dead at its shell; re-selecting respawns
   with `--resume` (transcript restored from JSONL).
 - Deleting a conversation ends its window + Claude process; the running

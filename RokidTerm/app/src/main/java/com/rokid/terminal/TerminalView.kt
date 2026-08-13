@@ -64,13 +64,24 @@ class TerminalView(context: Context) : View(context) {
         }
     }
 
+    /** HUD clock ticker (user 2026-08-13): re-renders every 30 s so the
+     *  minute flips within half a minute even when the terminal is idle. */
+    private val hudClockRunnable = object : Runnable {
+        override fun run() {
+            invalidate()
+            postDelayed(this, 30_000L)
+        }
+    }
+
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
         postDelayed(blinkRunnable, 500L)
+        post(hudClockRunnable)
     }
 
     override fun onDetachedFromWindow() {
         removeCallbacks(blinkRunnable)
+        removeCallbacks(hudClockRunnable)
         super.onDetachedFromWindow()
     }
     enum class Screen { ENDPOINTS, TERMINAL }
@@ -103,6 +114,8 @@ class TerminalView(context: Context) : View(context) {
     private var viewportListener: ((TerminalViewport) -> Unit)? = null
     private var geometry: GridGeometry? = null
     private var state = "NOT CONFIGURED"
+    private var batteryLevel = -1
+    private var batteryCharging = false
     private var screen = Screen.ENDPOINTS
     private var endpoints: List<EndpointProfile> = emptyList()
     private var selectedEndpoint = 0
@@ -249,6 +262,27 @@ class TerminalView(context: Context) : View(context) {
         invalidate()
     }
 
+    /** Battery HUD (user 2026-08-12): level % + charging; -1 = unknown (not drawn). */
+    fun setBattery(level: Int, charging: Boolean) {
+        if (level != batteryLevel || charging != batteryCharging) {
+            batteryLevel = level
+            batteryCharging = charging
+            invalidate()
+        }
+    }
+
+    /** HUD clock text (user 2026-08-13): 12-hour AM/PM, "3:45 PM". */
+    private fun hudTimeText(): String {
+        val cal = java.util.Calendar.getInstance()
+        var hour = cal.get(java.util.Calendar.HOUR)   // 12-hour, 0..11
+        if (hour == 0) hour = 12
+        val minute = cal.get(java.util.Calendar.MINUTE)
+        val am = cal.get(java.util.Calendar.AM_PM) == java.util.Calendar.AM
+        return String.format(
+            java.util.Locale.US, "%d:%02d%s", hour, minute, if (am) "AM" else "PM",
+        )
+    }
+
     fun showComposer(text: String, cursor: Int, status: String) {
         if (!composerVisible) composerFirstVisibleLine = 0
         composerVisible = true
@@ -329,6 +363,49 @@ class TerminalView(context: Context) : View(context) {
         val target = activeEndpoint?.name ?: "Unknown"
         canvas.drawText("$target  |  ${state.take(34)}", 24f, 70f, paint)
         canvas.drawLine(24f, 84f, width - 24f, 84f, paint)
+
+        // HUD top-right (users 2026-08-12/13): clock (12h AM/PM) + battery
+        // glyph + pct right-aligned on the title line; ⚡ bolt right of the
+        // battery when charging. Monochrome geometry only — outline + fill +
+        // nub; the bolt is a filled zigzag (no ⚡ glyph in the monospace font).
+        paint.alpha = 180
+        paint.textSize = 15f   // pct/clock font: smaller than the 22f title
+        val pct = if (batteryLevel >= 0) "$batteryLevel%" else ""
+        val pctW = paint.measureText(pct)
+        val time = hudTimeText()
+        val timeW = paint.measureText(time)
+        val glyphW = 15f
+        val glyphH = 11f
+        // Right edge (incl. the charging bolt) aligns with the status
+        // separator at width - 24: glyphLeft = width - 24 - 15 - 3 - 4 - 5.
+        val glyphLeft = width - 51f
+        val glyphTop = 26f
+        // Clock sits left of the pct/battery stack; baseline 37f centers the
+        // 15f text on the glyph band (26..37 -> 31.5).
+        canvas.drawText(time, glyphLeft - 6f - pctW - 10f - timeW, 37f, paint)
+        if (batteryLevel >= 0) {
+            paint.style = Paint.Style.STROKE
+            canvas.drawRect(glyphLeft, glyphTop, glyphLeft + glyphW, glyphTop + glyphH, paint)
+            paint.style = Paint.Style.FILL
+            val fillW = (glyphW - 2f) * (batteryLevel.coerceIn(0, 100) / 100f)
+            canvas.drawRect(glyphLeft + 1f, glyphTop + 1f, glyphLeft + 1f + fillW, glyphTop + glyphH - 1f, paint)
+            canvas.drawRect(glyphLeft + glyphW, glyphTop + 2.5f, glyphLeft + glyphW + 3f, glyphTop + glyphH - 2.5f, paint)
+            if (batteryCharging) {
+                val boltX = glyphLeft + glyphW + 7f
+                val boltY = glyphTop - 1f
+                val bolt = android.graphics.Path()
+                bolt.moveTo(boltX + 4f, boltY)
+                bolt.lineTo(boltX + 1f, boltY + 5f)
+                bolt.lineTo(boltX + 3.5f, boltY + 5f)
+                bolt.lineTo(boltX + 2.5f, boltY + 9f)
+                bolt.lineTo(boltX + 5f, boltY + 4f)
+                bolt.lineTo(boltX + 3f, boltY + 4f)
+                bolt.close()
+                canvas.drawPath(bolt, paint)
+            }
+            canvas.drawText(pct, glyphLeft - 6f - pctW, 37f, paint)
+            paint.style = Paint.Style.FILL
+        }
 
         geometry?.let { drawTerminal(canvas, it) }
 

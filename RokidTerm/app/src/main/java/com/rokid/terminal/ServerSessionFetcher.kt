@@ -240,15 +240,15 @@ class ServerSessionFetcher(
         }
 
         /**
-         * The newly-created conversation's real session from a re-listed
-         * folder: the newest session whose id is neither the app-generated
-         * placeholder (id honored -> nothing to converge) nor the previous
-         * conversation. Null when no such session exists yet.
+         * The session whose transcript file APPEARED after a new-chat
+         * switch: the first session whose id is neither in the pre-switch
+         * baseline nor the app's placeholder id. Never converges to a
+         * pre-existing old conversation (bug 2026-08-13: "newest other
+         * session" reused arbitrary old conversations' ids/history for new
+         * chats). Null when no such session exists yet.
          */
-        fun newestUnboundSession(folder: RemoteFolder, tempId: String, previousId: String?): RemoteSession? =
-            folder.sessions
-                .filter { it.id != tempId && it.id != previousId }
-                .maxByOrNull { it.epochMillis }
+        fun firstNewSession(folder: RemoteFolder, baseline: Set<String>, tempId: String): RemoteSession? =
+            folder.sessions.firstOrNull { it.id !in baseline && it.id != tempId }
 
         private fun shellQuote(value: String): String = "'" + value.replace("'", "'\\''") + "'"
     }

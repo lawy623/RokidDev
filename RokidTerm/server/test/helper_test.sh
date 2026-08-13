@@ -60,7 +60,7 @@ test_identification_cmdline() {
   tmux new-session -d -s "$SESSION" -n "rokid-abc123" -c "$dir" \
     "$FAKE" --effort max --dangerously-skip-permissions --resume abc123
   sleep 0.5
-  assert_eq "abc123" "$(window_conversation_id "$SESSION" "rokid-abc123")" || return 1
+  assert_eq "abc123" "$(window_conversation_id "$SESSION" 0)" || return 1
 }
 
 # The open transcript fd identifies the CURRENT conversation (beats a stale
@@ -74,7 +74,7 @@ test_identification_fd_beats_cmdline() {
   tmux new-session -d -s "$SESSION" -n "rokid-abc123" -c "$dir" \
     "ROKID_FAKE_JSONL=$PROJECTS/$enc/newer.jsonl $FAKE --effort max --dangerously-skip-permissions --resume abc123"
   sleep 0.5
-  assert_eq "newer" "$(window_conversation_id "$SESSION" "rokid-abc123")" || return 1
+  assert_eq "newer" "$(window_conversation_id "$SESSION" 0)" || return 1
 }
 
 # No launch args and no open fd -> unidentified (empty).
@@ -82,14 +82,14 @@ test_identification_unidentified() {
   local dir="$BASE/proj"
   tmux new-session -d -s "$SESSION" -n "rokid-abc123" -c "$dir" "$FAKE"
   sleep 0.5
-  assert_eq "" "$(window_conversation_id "$SESSION" "rokid-abc123")" || return 1
+  assert_eq "" "$(window_conversation_id "$SESSION" 0)" || return 1
 }
 
 # A window without a claude descendant -> unidentified (empty).
 test_identification_no_claude() {
   local dir="$BASE/proj"
   tmux new-session -d -s "$SESSION" -n "rokid-abc123" -c "$dir" "sleep 300"
-  assert_eq "" "$(window_conversation_id "$SESSION" "rokid-abc123")" || return 1
+  assert_eq "" "$(window_conversation_id "$SESSION" 0)" || return 1
 }
 
 # --- switch -------------------------------------------------------------
@@ -171,6 +171,32 @@ test_switch_new_and_resume_jsonl() {
   sleep 0.5
   assert_eq "cccc333" "$(run_helper_status_id)" || return 1
   assert_eq "error	bad session id" "$("$HELPER" switch "$SESSION" "$BASE" "$dir" "resume:bad id!")" || return 1
+}
+
+# Two windows sharing ONE name (tmux allows duplicate names) must not blind
+# the helper: identification/status/switch all target by INDEX
+# (bug 2026-08-13: name-based targets failed with "can't find window").
+test_duplicate_window_names() {
+  local dir="$BASE/proj" enc enc_dir
+  enc="$(enc "$dir")"
+  echo '{"type":"user"}' > "$PROJECTS/$enc/aaa111.jsonl"
+  "$HELPER" switch "$SESSION" "$BASE" "$dir" "resume:aaa111" >/dev/null || return 1
+  sleep 0.5
+  # Second window with the SAME name (new-window without -d selects it).
+  tmux new-window -t "$SESSION" -n "rokid-aaa111" -c "$dir" \
+    "$FAKE" --effort max --dangerously-skip-permissions --resume aaa111
+  sleep 0.5
+  # status must still report the ACTIVE window's claude (by index).
+  assert_eq "aaa111" "$(run_helper_status_id)" || return 1
+  # switching to the conversation finds ONE of them and creates NO third
+  # window; the alive claude is selected, not restarted.
+  local before after
+  before="$(wc -l < "$FAKE_LOG")"
+  "$HELPER" switch "$SESSION" "$BASE" "$dir" "resume:aaa111" >/dev/null || return 1
+  sleep 0.5
+  after="$(wc -l < "$FAKE_LOG")"
+  assert_eq "$before" "$after" || return 1
+  assert_eq "2" "$(tmux list-windows -t "$SESSION" -F '#{window_name}' | wc -l | tr -d ' ')" || return 1
 }
 
 # --- status -------------------------------------------------------------
@@ -257,12 +283,13 @@ test_delete_refuses_active_attached() {
   "$HELPER" switch "$SESSION" "$BASE" "$dir" "resume:aaa111" >/dev/null || return 1
   sleep 0.5
   # Simulate the app's attached client: tmux refuses a non-tty attach, so
-  # run it inside a pty. macOS: `script -q /dev/null CMD`; Linux:
-  # `script -qec CMD /dev/null`.
+  # run it inside a pty. TERM must be set (a non-interactive ssh context
+  # leaves it unset and tmux refuses: "terminal does not support clear").
+  # macOS: `script -q /dev/null CMD`; Linux: `script -qec CMD /dev/null`.
   if [ "$(uname)" = "Darwin" ]; then
-    script -q /dev/null tmux attach-session -t "$SESSION" >/dev/null 2>&1 &
+    TERM=xterm script -q /dev/null tmux attach-session -t "$SESSION" >/dev/null 2>&1 &
   else
-    script -qec "tmux attach-session -t $SESSION" /dev/null >/dev/null 2>&1 &
+    TERM=xterm script -qec "tmux attach-session -t $SESSION" /dev/null >/dev/null 2>&1 &
   fi
   local attach_pid=$!
   sleep 0.5
@@ -272,6 +299,19 @@ test_delete_refuses_active_attached() {
   assert_eq "error	active session" "$out" || return 1
   kill "$attach_pid" 2>/dev/null
   [ -f "$PROJECTS/$enc/aaa111.jsonl" ] || { echo "  jsonl deleted despite refusal"; return 1; }
+}
+
+# Deleting a never-messaged new chat SUCCEEDS: its window IS the whole
+# conversation (no jsonl ever existed) — killed window + ok (bug 2026-08-12).
+test_delete_never_messaged_new_chat() {
+  local dir="$BASE/proj" enc enc_dir
+  enc="$(enc "$dir")"
+  "$HELPER" switch "$SESSION" "$BASE" "$dir" "new:cccc333" >/dev/null || return 1
+  sleep 0.5
+  local out
+  out="$("$HELPER" delete "$SESSION" "$BASE" "$dir" "cccc333")" || return 1
+  assert_eq "ok	$enc	cccc333" "$out" || return 1
+  assert_eq "" "$(tmux list-windows -t "$SESSION" -F '#{window_name}' | grep 'rokid-cccc333')" || return 1
 }
 
 # adopt renames the ACTIVE window to the new id when its claude's cwd
@@ -365,12 +405,14 @@ main() {
   run_case test_switch_respawns_dead
   run_case test_switch_two_conversations
   run_case test_switch_new_and_resume_jsonl
+  run_case test_duplicate_window_names
   run_case test_status_active_window_only
   run_case test_status_renames_stale_window
   run_case test_status_none
   run_case test_delete_kills_window
   run_case test_delete_skips_stale_window
   run_case test_delete_refuses_active_attached
+  run_case test_delete_never_messaged_new_chat
   run_case test_adopt_renames
   run_case test_sweep_kills_idle_keeps_active
   run_case test_sweep_keeps_recent
