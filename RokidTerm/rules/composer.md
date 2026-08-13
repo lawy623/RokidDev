@@ -263,6 +263,31 @@ Cancellation semantics must be explicit:
 - Interrupting the active Claude task is a separate explicit terminal
   action, not composer cancellation.
 
+## Submit verification (verify-and-retry, 2026-08-13)
+
+Claude Code's TUI runs a paste-burst detector: a trailing `\r` that
+arrives inside its burst window (large texts, or jitter stretching the
+burst) is swallowed as a paste newline — the draft stays on the input
+line, unsubmitted, and the NEXT message's Enter then submits both merged.
+A fixed Enter delay is a guess that jitter can break.
+
+Contract: after every composer/Type-something send, RokidTerm watches the
+rendered input line (`inputLineText()`):
+
+1. Line empty / no longer ends with the draft's tail → submitted, done.
+2. Line still shows the draft's tail after the stream has settled →
+   resend a bare Enter. This retry fires only after the OBSERVED failure
+   (seconds after the burst), so it is provably outside any burst window —
+   deterministic for ANY draft length and network conditions.
+3. After 2 failed retries → Ctrl+U clears the stuck line (Ink TextInput)
+   so it cannot merge into the user's next message; the failure is logged
+   with the draft length (never the text).
+
+Verified on-device 2026-08-13: 470- and 750-char drafts submit correctly.
+The comparison uses the draft's last 20 chars (fits the ~64-column
+viewport even for CJK; cannot coincide with Claude's next-input
+suggestion).
+
 Do not implement an app-side FIFO that flushes by searching rendered text
 for prompts, spinners, or status words. Claude/tmux output, viewport width,
 themes, versions, and localization make visual readiness detection brittle.

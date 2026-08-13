@@ -293,9 +293,21 @@ Verified on the current glasses and Tencent Cloud server:
   detector treats a trailing `\r` arriving in the SAME read as long text as
   a newline — the text renders in the input line but is never submitted.
   100-500 char drafts died on the input line; short drafts worked because
-  the burst window closed before the `\r` arrived. Fix:
+  the burst window closed before the `\r` arrived. Fix (2026-08-07/10):
   `sendTextWithEnter` — drafts ≥80 chars go text-first, Enter alone after
-  300 ms (short drafts keep the original one-shot path).
+  800 ms (the burst window grows with the draft length; 300 ms was not
+  enough). **Final hardening 2026-08-13 — verify-and-retry submit
+  (deterministic, no window guessing)**: a fixed delay is a guess that
+  network jitter can break (the window is measured from the remote's first
+  received byte). `scheduleSubmitVerify` now watches the rendered input
+  line after every send: if the draft's tail is still there once the
+  stream has settled, a bare retry Enter is sent — fired only after the
+  OBSERVED failure, seconds after the burst, so it is provably outside any
+  burst window — and after 2 failed retries the stuck line is cleared with
+  Ctrl+U (Ink TextInput) so it cannot merge into the user's next message.
+  Verified on-device 2026-08-13: 470- and 750-char drafts submit
+  correctly. Covers the normal composer AND the AskUserQuestion
+  Type-something path.
 - **New-chat history leak (sync watcher clobber)**: a new conversation's
   server JSONL only appears on the FIRST message, so `status` reports the
   PREVIOUS conversation as newest until then. The 90 s grace alone was not

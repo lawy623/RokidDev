@@ -1268,6 +1268,50 @@ class MainActivity : Activity() {
                 SEND_ENTER_DELAY_MS,
             )
         }
+        scheduleSubmitVerify(text, if (text.length >= LONG_SEND_CHARS) SEND_ENTER_DELAY_MS else 0L)
+    }
+
+    /**
+     * Verify-and-retry submit (design 2026-08-13): Claude Code's paste-burst
+     * detector swallows a trailing \r that arrives inside its burst window,
+     * leaving a long draft stuck on the input line (long texts, network
+     * jitter — a fixed delay is a guess that jitter can break). After the
+     * initial Enter, watch the rendered input line: a draft that is STILL
+     * there after the stream has settled gets a bare retry Enter — fired
+     * only after the observed failure, seconds after the burst, so it is
+     * provably outside any burst window (deterministic, no window guessing).
+     * After [VERIFY_MAX_RETRIES] failed retries the stuck line is cleared
+     * with Ctrl+U (Ink TextInput) so it cannot merge into the user's next
+     * message. [firstDelayMs] offsets the first check past the initial
+     * Enter's own delay (long drafts send Enter separately).
+     */
+    private fun scheduleSubmitVerify(text: String, firstDelayMs: Long) {
+        // Compare against the draft's TAIL: the input line is single-line
+        // and horizontally scrolls — only the end of a long draft is
+        // visible. 20 chars stays within the ~64-column viewport even for
+        // CJK (20 CJK = 40 columns) and can never coincide with Claude's
+        // next-input suggestion.
+        val tail = text.takeLast(VERIFY_TAIL_CHARS)
+        if (tail.isEmpty()) return
+        var retries = 0
+        fun recheck() {
+            val line = terminalView.inputLineText() ?: return   // no text on the line = submitted
+            if (!line.endsWith(tail)) return                    // the line moved on = submitted
+            if (retries >= VERIFY_MAX_RETRIES) {
+                // Give up submitting; clear the stuck line so the draft
+                // cannot merge into the user's next message.
+                if (sshState == "CONNECTED") ssh.sendCharacters("")   // Ctrl+U
+                android.util.Log.w(
+                    "RokidTerminal",
+                    "input stuck after $retries retries; cleared (len=${text.length})",
+                )
+                return
+            }
+            retries++
+            if (sshState == "CONNECTED") ssh.sendEnter()
+            mainHandler.postDelayed({ recheck() }, VERIFY_RECHECK_MS)
+        }
+        mainHandler.postDelayed({ recheck() }, firstDelayMs + VERIFY_FIRST_MS)
     }
 
     /**
@@ -1300,6 +1344,9 @@ class MainActivity : Activity() {
                 { if (sshState == "CONNECTED") ssh.sendEnter() },
                 ASK_TEXT_SUBMIT_DELAY_MS,
             )
+            // Verify the answer left the input line; retry/clear when the
+            // Enter was swallowed (same paste-burst hazard, 2026-08-13).
+            scheduleSubmitVerify(text, ASK_TEXT_SUBMIT_DELAY_MS)
         }, ASK_TYPE_SWITCH_DELAY_MS)
     }
 
@@ -3067,6 +3114,20 @@ class MainActivity : Activity() {
         // drafts and they stayed on the input line unsubmitted (user
         // report 2026-08-10, normal composer sends).
         private const val SEND_ENTER_DELAY_MS = 800L
+
+        /** Verify-and-retry submit (design 2026-08-13): first check after
+         *  the initial Enter; a stuck draft (paste-burst swallow) gets a
+         *  bare retry Enter — fired only after the observed failure, so it
+         *  is provably outside any burst window — then, after
+         *  [VERIFY_MAX_RETRIES], a Ctrl+U clears the line so the stuck
+         *  text cannot merge into the user's next message. */
+        private const val VERIFY_FIRST_MS = 1500L
+        private const val VERIFY_RECHECK_MS = 1500L
+        private const val VERIFY_MAX_RETRIES = 2
+        // 20 chars stays within the ~64-column viewport even for CJK (20
+        // CJK = 40 columns) and can never coincide with Claude's
+        // next-input suggestion.
+        private const val VERIFY_TAIL_CHARS = 20
 
         private const val ARROW_UP = "up"
         private const val ARROW_DOWN = "down"
