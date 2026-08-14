@@ -27,7 +27,10 @@ setup() {   # per-scenario: fresh tmp dirs + a session named $SESSION
   mkdir -p "$PROJECTS/$(enc "$BASE/proj")"
   export ROKID_SESSIONS_PROJECTS_DIR="$PROJECTS"
   export ROKID_SESSIONS_LAUNCHER="$FAKE"
-  FAKE_LOG="${TMPDIR:-/tmp}/rokid-fake-launch.log"; : > "$FAKE_LOG"
+  # rm before truncate: a previous run as ANOTHER user (e.g. deploy smoke as
+  # rokid) leaves a rokid-owned file that `: >` cannot truncate (Linux /tmp
+  # is sticky, so unlink still works). Bug found 2026-08-14 on the VM.
+  FAKE_LOG="${TMPDIR:-/tmp}/rokid-fake-launch.log"; rm -f "$FAKE_LOG" 2>/dev/null; : > "$FAKE_LOG" 2>/dev/null || true
   tmux kill-session -t "$SESSION" 2>/dev/null || true
 }
 teardown() {
@@ -379,6 +382,37 @@ test_sweep_keeps_busy_child() {
   assert_eq "swept	0" "$out" || return 1
 }
 
+# The idle signal is the JSONL's LAST ENTRY timestamp, NOT the file mtime:
+# a background conversation whose JSONL was touched/rewritten (mtime fresh,
+# content old — the 2026-08-14 Claude-Code journal-rewrite signature) is
+# still swept, while one with a fresh last entry is kept.
+test_sweep_ignores_mtime_touch() {
+  local dir="$BASE/proj" enc enc_dir now_ts old_ts
+  enc="$(enc "$dir")"
+  enc_dir="$PROJECTS/$enc"
+  now_ts="$(python3 -c 'import time; print(time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime()))')"
+  old_ts="$(python3 -c 'import time; print(time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime(time.time() - 7200)))')"
+  # aaa111: last entry 2 h ago, file will be touched to NOW -> must be swept
+  printf '{"type":"user","timestamp":"%s"}\n' "$old_ts" > "$enc_dir/aaa111.jsonl"
+  # bbb222: last entry NOW -> must be kept even though mtime is also now
+  printf '{"type":"user","timestamp":"%s"}\n' "$now_ts" > "$enc_dir/bbb222.jsonl"
+  echo '{"type":"user"}' > "$enc_dir/ccc333.jsonl"
+  "$HELPER" switch "$SESSION" "$BASE" "$dir" "resume:ccc333" >/dev/null || return 1
+  "$HELPER" switch "$SESSION" "$BASE" "$dir" "resume:aaa111" >/dev/null || return 1
+  "$HELPER" switch "$SESSION" "$BASE" "$dir" "resume:bbb222" >/dev/null || return 1
+  sleep 0.5
+  # ccc333 becomes the ACTIVE window (never swept); aaa111 and bbb222 are
+  # both background. Touch both transcripts: mtime is NOW for both, so only
+  # the CONTENT timestamps can distinguish them.
+  tmux select-window -t "$SESSION:rokid-ccc333"
+  touch "$enc_dir/aaa111.jsonl" "$enc_dir/bbb222.jsonl"
+  local out
+  out="$(SWEEP_SAMPLE_SLEEP=1 "$HELPER" sweep "$SESSION" "$BASE" 1)"
+  assert_eq "swept	1" "$out" || return 1
+  assert_eq "" "$(tmux list-windows -t "$SESSION" -F '#{window_name}' | grep 'rokid-aaa111')" || return 1
+  [ -n "$(tmux list-windows -t "$SESSION" -F '#{window_name}' | grep 'rokid-bbb222')" ] || return 1
+}
+
 # A background conversation whose claude burns CPU (long thinking) is NOT swept.
 test_sweep_keeps_busy_cpu() {
   local dir="$BASE/proj" enc enc_dir
@@ -415,6 +449,7 @@ main() {
   run_case test_delete_never_messaged_new_chat
   run_case test_adopt_renames
   run_case test_sweep_kills_idle_keeps_active
+  run_case test_sweep_ignores_mtime_touch
   run_case test_sweep_keeps_recent
   run_case test_sweep_keeps_busy_child
   run_case test_sweep_keeps_busy_cpu

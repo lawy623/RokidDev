@@ -495,10 +495,35 @@ cmd_adopt() {
   printf 'ok\t%s\t%s\n' "$(encode "$dir")" "$new_id"
 }
 
+# Last-entry timestamp (epoch seconds) of a conversation JSONL, printed to
+# stdout. CONTENT-based, so file-mtime touches cannot fake activity —
+# 2026-08-14: Claude Code's own journal maintenance rewrote the aiPlayGround
+# JSONLs (content unchanged, mtime reset to now), which silently reset the
+# sweep's idle clock and kept two dead conversations alive. Falls back to
+# exit 1 when the last line has no parseable `timestamp` field (old/broken
+# lines, non-Claude fixtures) — callers then fall back to the file mtime.
+jsonl_last_ts() {
+  tail -n 1 "$1" 2>/dev/null | python3 -c '
+import calendar, re, sys, time
+line = sys.stdin.read()
+m = re.search(r"\"timestamp\"\s*:\s*\"([^\"]+)\"", line)
+if not m:
+    sys.exit(1)
+try:
+    print(calendar.timegm(time.strptime(m.group(1)[:19], "%Y-%m-%dT%H:%M:%S")))
+except ValueError:
+    sys.exit(1)
+'
+}
+
 # Cheap idle pre-filter (design 2026-08-11 §3.6): a window is an idle
-# candidate when its claude is dead, or (JSONL old AND no descendant
-# children). Unknowns are treated as BUSY (never kill what we cannot prove
-# idle). $2 = window INDEX. Exit 0 = idle candidate.
+# candidate when its claude is dead, or (JSONL last entry old AND no
+# descendant children). The JSONL age signal uses the LAST ENTRY's
+# timestamp, not the file mtime (see jsonl_last_ts). Long-running tools are
+# protected two ways: any descendant child of claude marks the window busy
+# before the JSONL check runs, and the sweep's second phase re-samples CPU.
+# Unknowns are treated as BUSY (never kill what we cannot prove idle).
+# $2 = window INDEX. Exit 0 = idle candidate.
 idle_fast() {
   local session="$1" idx="$2" idle_secs="$3" pane_pid claude_pid cwd id jsonl
   pane_pid="$(tmux list-panes -t "$session:$idx" -F '#{pane_pid}' 2>/dev/null | head -1)"
@@ -515,9 +540,14 @@ idle_fast() {
   if [ -n "$cwd" ] && [ -n "$id" ]; then
     jsonl="$PROJECTS_DIR/$(encode "$cwd")/$id.jsonl"
     if [ -f "$jsonl" ]; then
-      local mtime age
-      mtime="$(stat -c %Y "$jsonl" 2>/dev/null || stat -f %m "$jsonl" 2>/dev/null)"
-      age=$(( $(date +%s) - mtime ))
+      local last_ts mtime age
+      last_ts="$(jsonl_last_ts "$jsonl")" || last_ts=""
+      if [ -n "$last_ts" ]; then
+        age=$(( $(date +%s) - last_ts ))
+      else
+        mtime="$(stat -c %Y "$jsonl" 2>/dev/null || stat -f %m "$jsonl" 2>/dev/null)"
+        age=$(( $(date +%s) - mtime ))
+      fi
       [ "$age" -lt "$idle_secs" ] && return 1   # recently active
     fi
   fi
@@ -531,8 +561,10 @@ idle_fast() {
 # Also self-heals duplicate window names (bug 2026-08-13: tmux allows
 # duplicate names, which blind name-based targeting): the later duplicate
 # is renamed to its identified conversation id. Output: `swept\t<count>`.
+# Default idle threshold 60 min (2026-08-14, was 180 — a Claude-Code JSONL
+# rewrite reset the mtime-based clock, and 3 h was too long anyway).
 cmd_sweep() {
-  local session="$1" base="$2" idle_min="${3:-180}"
+  local session="$1" base="$2" idle_min="${3:-60}"
   local idle_secs=$(( idle_min * 60 ))
   tmux has-session -t "$session" 2>/dev/null || { echo "swept	0"; return 0; }
   local active_idx idx name count=0 seen=""
@@ -714,7 +746,7 @@ main() {
       ;;
     sweep)
       [ $# -ge 3 ] || { printf 'error\t%s\n' "usage: sweep <tmux-session> <base-dir> [idle-minutes]"; return 1; }
-      cmd_sweep "$2" "$3" "${4:-180}"
+      cmd_sweep "$2" "$3" "${4:-60}"
       ;;
     switch)
       [ $# -ge 5 ] || { printf 'error\t%s\n' "usage: switch <tmux-session> <base-dir> <real-dir> <resume:id|new:uuid>"; return 1; }

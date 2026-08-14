@@ -452,8 +452,18 @@ Verified on the current glasses and Tencent Cloud server:
   restarts a live process), `status` reports the active window and
   self-heals stale window names, `delete` kills the conversation's window,
   `adopt` renames on new-chat id convergence, and `sweep` ends idle
-  background conversations (default 3 h, triple-signal guard: JSONL age +
-  child presence + CPU sampling; the active window is never swept). All
+  background conversations (default 1 h, triple-signal guard: JSONL last
+  entry age + child presence + CPU sampling; the active window is never
+  swept). 2026-08-14: the JSONL age signal reads the LAST ENTRY's timestamp
+  instead of the file mtime — Claude Code's own journal maintenance rewrote
+  both aiPlayGround JSONLs (content unchanged, mtime reset to now) and the
+  mtime-based clock kept two dead conversations alive forever. Verified in
+  production the same day: the new logic swept both conversations ~4 min
+  after deploy. Operational note: the app's exec reader returns after
+  750 ms of quiet, so a sweep WITH candidates logs `idle sweep: -1` (read
+  timeout) — the REMOTE sweep survives the disconnect (verified on this
+  server: exec processes are not SIGHUP'd on client disconnect) and
+  completes its 2-minute sampling + kill; `-1` is not a failure. All
   window targeting is by INDEX — tmux window names are not unique, and a
   duplicate name breaks name-based targets ("can't find window"); the
   sweep self-heals duplicates by renaming them to their identified
