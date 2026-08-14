@@ -41,6 +41,10 @@ class MainActivity : Activity() {
     private var endpoints: List<EndpointProfile> = emptyList()
     private var selectedIndex = 0
     private var activeEndpoint: EndpointProfile? = null
+
+    /** Last endpoint bound to a conversation — persists the scrollback even
+     *  after the picker cleared [activeEndpoint] (bug 2026-08-14). */
+    private var lastBoundEndpoint: EndpointProfile? = null
     private var mode = Mode.ENDPOINTS
     private var composerStatus = ""
     private var asrStatus = ""
@@ -150,7 +154,10 @@ class MainActivity : Activity() {
     private var newSessionFolderPath: String? = null
 
     private var lastScrollbackCount = -1
+    private var lastPersistedRows = 0
     private var scrollbackStore: ScrollbackStore? = null
+    /** Cells of the last frame handed to the View (status-tick suppression). */
+    private var renderedFrameCells: List<List<TerminalCell>>? = null
     private var scrollbackFolderKey: String? = null
     private var scrollbackSessionId: String? = null
 
@@ -186,7 +193,17 @@ class MainActivity : Activity() {
     }
 
     private val drainTerminalFrame = Runnable {
-        pendingTerminalFrame.getAndSet(null)?.let(terminalView::setTerminalFrame)
+        // Status-tick suppression (2026-08-14): Claude's thinking/tool
+        // status row repaints ~1/s with ONLY that row changing — rendering
+        // every tick (a full 54×36 grid redraw on the glasses) made the
+        // real-time stream janky. Publish a frame only when a non-status
+        // row changed; ticking rows stay frozen on screen (the user still
+        // sees "✻ Combobulating…", it just doesn't animate).
+        val frame = pendingTerminalFrame.getAndSet(null)
+        if (frame != null && hasRenderableChange(frame)) {
+            terminalView.setTerminalFrame(frame)
+            renderedFrameCells = frame.cells
+        }
         // Diagnostics: how fast is scrollback growing (alternate-screen capture)?
         val sb = terminalOutput.scrollbackRows
         if (sb != lastScrollbackCount) {
@@ -201,12 +218,73 @@ class MainActivity : Activity() {
             inputHistory.setSuggestion(suggestion)
         }
         updateAskPanelState()
+        // Incremental scrollback persistence (2026-08-14): write the file
+        // as the in-memory history grows (every PERSIST_INCREMENT_ROWS new
+        // rows) so an abnormal exit (process kill, lost onDestroy) loses at
+        // most the last few dozen rows instead of the whole session. The
+        // exit-time persist remains the final write.
+        if (sshState == "CONNECTED" && sb >= lastPersistedRows + PERSIST_INCREMENT_ROWS) {
+            persistScrollback()
+            lastPersistedRows = terminalOutput.scrollbackRows
+        }
         // Panel-mode auto-exit runs on its own poller (panelExitRunnable,
         // reply-signal design 2026-08-07): it exits when Claude's reply has
         // rendered and holds while a numbered picker is on screen.
+        // Turn-end persistence (2026-08-14): restart the quiet window on
+        // every published frame; when the stream stays quiet for
+        // TURN_SETTLE_MS the conversation turn is over (response done, the
+        // user is reading/typing the next prompt — an invisible write
+        // point) and the file is written. The delta guard makes mid-turn
+        // "cooking" waits no-ops (lastPersistedRows is already current).
+        mainHandler.removeCallbacks(persistOnSettle)
+        mainHandler.postDelayed(persistOnSettle, TURN_SETTLE_MS)
         terminalFrameScheduled.set(false)
         if (pendingTerminalFrame.get() != null) scheduleTerminalFrame()
     }
+
+    /**
+     * Turn-end persist (2026-08-14): one-shot quiet-settle write, restarted
+     * per frame by [drainTerminalFrame]. Fires when the conversation output
+     * has been quiet for TURN_SETTLE_MS — the end of a turn. Writes only if
+     * new rows were captured since the last persist.
+     */
+    private val persistOnSettle = object : Runnable {
+        override fun run() {
+            val sb = terminalOutput.scrollbackRows
+            // != not >: the settle-trim inside persistScrollback can SHRINK
+            // the scrollback (dropping screen-duplicate rows), and the file
+            // must be rewritten without them (bug 2026-08-14: the file kept
+            // the current turn's repaint copies).
+            if (sshState == "CONNECTED" && sb != lastPersistedRows) {
+                persistScrollback()
+                lastPersistedRows = terminalOutput.scrollbackRows
+            }
+        }
+    }
+
+    /**
+     * Whether [frame] changes anything the user should see, vs. being a
+     * status-tick repaint. Compares cells against the last rendered frame;
+     * a frame whose only differing rows are Claude status rows (in both the
+     * old and the new text) is not worth a full grid redraw.
+     */
+    private fun hasRenderableChange(frame: TerminalFrame): Boolean {
+        val prev = renderedFrameCells ?: return true
+        if (prev.size != frame.cells.size) return true
+        for (row in frame.cells.indices) {
+            val old = rowText(prev[row])
+            val new = rowText(frame.cells[row])
+            if (old != new) {
+                if (!ClaudeStatusRows.isStatusRow(old) || !ClaudeStatusRows.isStatusRow(new)) {
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
+    private fun rowText(row: List<TerminalCell>): String =
+        row.joinToString("") { cell -> if (cell.continuation) "" else cell.text }.trimEnd()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -2384,6 +2462,7 @@ class MainActivity : Activity() {
         traceRecorder.reset()
         endpointStore.select(endpoint.id)
         activeEndpoint = endpoint
+        lastBoundEndpoint = endpoint
         mode = Mode.TERMINAL
         panelMode = false
         terminalOutput.captureSuspended = false
@@ -3016,14 +3095,28 @@ class MainActivity : Activity() {
      * phase).
      */
     private fun persistScrollback() {
-        val endpoint = activeEndpoint ?: return
-        val folderKey = scrollbackFolderKey ?: return
-        val sessionId = scrollbackSessionId ?: return
+        // activeEndpoint is cleared when the endpoint picker opens (Back out
+        // of the terminal), but the bound conversation's scrollback must
+        // still persist on exit — fall back to the last bound endpoint
+        // (bug 2026-08-14: the file stayed at yesterday's timestamp because
+        // every exit-time persist saw endpoint=false).
+        val endpoint = activeEndpoint ?: lastBoundEndpoint
+        val folderKey = scrollbackFolderKey
+        val sessionId = scrollbackSessionId
+        if (endpoint == null || folderKey == null || sessionId == null) {
+            return
+        }
         val store = scrollbackStore ?: return
+        // Settle-trim first: streaming repaints copy the current turn into
+        // the scrollback (and the screen), and the FILE must not carry the
+        // duplicate (bug 2026-08-14: the persisted tail duplicated the
+        // screen, and after reconnect the current turn rendered twice).
+        terminalOutput.trimSettledScrollback()
         val rows = terminalOutput.exportScrollbackText()
         store.write(store.file(endpoint.id, folderKey, sessionId), rows)
         store.prune(endpoint.id)
         InputHistory.prune(filesDir)
+        android.util.Log.i("RokidTerminal", "persisted ${rows.size} rows")
     }
 
     private fun loadScrollback(): List<String> {
@@ -3102,6 +3195,11 @@ class MainActivity : Activity() {
 
         /** Sync-watcher poll interval (design 2026-08-07 §3.3); see [sessionSyncRunnable]. */
         const val SESSION_SYNC_MS = 30_000L
+        /** Incremental scrollback persistence threshold (2026-08-14). */
+        private const val PERSIST_INCREMENT_ROWS = 500
+        /** Turn-end persist quiet window (2026-08-14): no output for this
+         *  long = the turn is over, write the file. */
+        private const val TURN_SETTLE_MS = 3_000L
         /** Idle-conversation sweep cadence (design 2026-08-11 §3.6). */
         const val SWEEP_INTERVAL_MS = 5 * 60_000L
 

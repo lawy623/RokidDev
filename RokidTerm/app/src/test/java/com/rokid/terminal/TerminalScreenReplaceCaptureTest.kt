@@ -150,14 +150,13 @@ class TerminalScreenReplaceCaptureTest {
         var now = 0L
         val processor = TerminalOutputProcessor(
             columns = 10,
-            rows = 6,
+            rows = 36,   // real layout: bottom 7 rows are UI chrome (excluded)
             nanoTime = { now },
         )
         // Five consecutive full repaints with entirely new content (the
         // seq-output failure mode: text-shift matching finds nothing).
         // Captures are provisional for one chunk — frames 1-3 settle into
-        // the scrollback by the fifth repaint. The 6-row screen excludes
-        // its bottom 3 rows, so each frame paints rows 0-2 (3 rows).
+        // the scrollback by the fifth repaint. Each frame paints rows 0-2.
         processor.consume(altEnter + frame(listOf("1", "2", "3")))
         now += 600_000_000L
         processor.consume(frame(listOf("4", "5", "6")))
@@ -184,6 +183,294 @@ class TerminalScreenReplaceCaptureTest {
 
     private fun paintFrameRow(row: Int, text: String): String =
         "[${row + 1};1H$text"
+
+    @Test
+    fun statusTickRowIsNotCaptured() {
+        // Claude's thinking status ticks ~1/s at a row position that shifts
+        // between versions (was 29 for "Cooking for", 28 for "Combobulating…",
+        // user report 2026-08-14: 467 captured ticks flooded the history).
+        // The capture must reject it by CONTENT, not position.
+        val screen = TerminalScreen(columns = 54, rows = 6, excludedBottomRows = 2)
+        screen.consume(altEnter, nowNanos = 0)
+        screen.consume(paint(screen, 3, "✻ Combobulating… (30s · ↓ 2.0k tokens)"), nowNanos = 0)
+
+        screen.consume(paint(screen, 3, "✻ Combobulating… (31s · thought for 1s)"), nowNanos = 400_000_000L)
+
+        assertTrue(screen.drainReplaceCaptures().isEmpty())
+    }
+
+    @Test
+    fun turnEndStatusRowIsNotCaptured() {
+        val screen = TerminalScreen(columns = 54, rows = 6, excludedBottomRows = 2)
+        screen.consume(altEnter, nowNanos = 0)
+        screen.consume(paint(screen, 0, "✻ Brewed for 3m 59s"), nowNanos = 0)
+
+        screen.consume(paint(screen, 0, "NEXT CONTENT"), nowNanos = 400_000_000L)
+
+        assertTrue(screen.drainReplaceCaptures().isEmpty())
+    }
+
+    @Test
+    fun toolRunStatusRowIsNotCaptured() {
+        val screen = TerminalScreen(columns = 54, rows = 6, excludedBottomRows = 2)
+        screen.consume(altEnter, nowNanos = 0)
+        screen.consume(paint(screen, 0, "● Running 1 shell command…"), nowNanos = 0)
+
+        screen.consume(paint(screen, 0, "OUTPUT"), nowNanos = 400_000_000L)
+
+        assertTrue(screen.drainReplaceCaptures().isEmpty())
+    }
+
+    @Test
+    fun realContentRowIsStillCaptured() {
+        // "● 已提交 …" is a real tool-output row — the ● marker alone must
+        // not trigger the status signature.
+        val screen = TerminalScreen(columns = 54, rows = 6, excludedBottomRows = 2)
+        screen.consume(altEnter, nowNanos = 0)
+        screen.consume(paint(screen, 0, "● 已提交 856bcdb（缓存协议修复完成）"), nowNanos = 0)
+
+        screen.consume(paint(screen, 0, "NEXT"), nowNanos = 400_000_000L)
+
+        val captured = screen.drainReplaceCaptures()
+        assertEquals(1, captured.size)
+        assertTrue(rowText(captured, 0).startsWith("● 已提交"))
+    }
+
+    @Test
+    fun purgeStatusRowsRemovesOnlyStatusRows() {
+        val screen = TerminalScreen(columns = 54, rows = 6, excludedBottomRows = 2)
+        screen.consume(altEnter, nowNanos = 0)
+        screen.appendExternalRows(
+            listOf(
+                "✻ Combobulating… (1m 10s · thought for 4s)",
+                "❯ 请等待 3m 59s 后重试",
+                "✻ Brewed for 3m 59s",
+                "选 A 还是 B？或者先不推",
+            ).map { text ->
+                Array(54) { col -> TerminalCell(text = if (col < text.length) text[col].toString() else " ") }
+            },
+        )
+
+        assertEquals(2, screen.purgeStatusRows())
+        assertEquals(2, screen.scrollbackSize())
+        // User rows and real content survive; the status rows are gone.
+        val text = screen.exportScrollbackText()
+        assertEquals("❯ 请等待 3m 59s 后重试", text[0].trimEnd())
+        assertEquals("选 A 还是 B？或者先不推", text[1].trimEnd())
+    }
+
+    @Test
+    fun importWrapsLongLinesInsteadOfTruncating() {
+        // Server export lines are LOGICAL lines up to 2000 chars; the old
+        // import truncated at 54 and silently dropped every long line's
+        // tail (bug 2026-08-14: restored history looked unwrapped and
+        // incomplete). The import must wrap at the grid width instead.
+        val screen = TerminalScreen(columns = 10, rows = 6, excludedBottomRows = 2)
+        val long = "1234567890".repeat(5) // 50 chars
+        screen.importScrollbackTextForce(listOf(long))
+
+        assertEquals(5, screen.scrollbackSize())
+        val text = screen.exportScrollbackText()
+        assertEquals("1234567890", text[0].trimEnd())
+        assertEquals("1234567890", text[1].trimEnd())
+        assertEquals("1234567890", text[4].trimEnd())
+        assertEquals(50, text.sumOf { it.trimEnd().length })
+    }
+
+    @Test
+    fun importWrapKeepsBackgroundAcrossWrappedRows() {
+        val screen = TerminalScreen(columns = 10, rows = 6, excludedBottomRows = 2)
+        screen.importScrollbackTextForce(listOf("[48;5;237m  ❯ 一二三四五六七八九十一二三四五六七八九十一二[49m"))
+
+        // 22 CJK chars = 44 display columns + 4-col prefix = 48 → 5 grid
+        // rows, all carrying the user-block background (the live TUI fills
+        // the whole block too).
+        assertEquals(5, screen.scrollbackSize())
+        val text = screen.exportScrollbackText()
+        text.forEach { row -> assertTrue("row lost background: $row", row.contains("[48;5;237m")) }
+        assertEquals(26, text.sumOf { row ->
+            row.replace("[48;5;237m", "").replace("[49m", "").trimEnd().length
+        })
+    }
+
+    @Test
+    fun pipeTableRowIsNotCaptured() {
+        // Claude streams tables as markdown pipes ("| 方式 | 行为 | 现状 |"),
+        // then re-renders them as box-drawing tables in the final repaint.
+        // The pipe form is an intermediate — it must not become history
+        // (user report 2026-08-14: restored history showed the misaligned
+        // pipe rows instead of the final table).
+        val screen = TerminalScreen(columns = 54, rows = 6, excludedBottomRows = 2)
+        screen.consume(altEnter, nowNanos = 0)
+        screen.consume(paint(screen, 0, "| 方式 | 行为 | 现状 |"), nowNanos = 0)
+        screen.consume(paint(screen, 1, "|---|---|---|"), nowNanos = 0)
+        screen.consume(paint(screen, 2, "| **整包下载**（现在） | 一次拉 157MB → 全部解码 |"), nowNanos = 0)
+
+        screen.consume(paint(screen, 0, "NEXT"), nowNanos = 400_000_000L)
+        screen.consume(paint(screen, 1, "NEXT"), nowNanos = 400_000_000L)
+        screen.consume(paint(screen, 2, "NEXT"), nowNanos = 400_000_000L)
+
+        assertTrue(screen.drainReplaceCaptures().isEmpty())
+    }
+
+    @Test
+    fun codeLikePipeRowIsStillCaptured() {
+        // "| a | b |" without CJK cells or a pipe/dash separator is not a
+        // Claude table — e.g. a code row — and must still be captured.
+        val screen = TerminalScreen(columns = 54, rows = 6, excludedBottomRows = 2)
+        screen.consume(altEnter, nowNanos = 0)
+        screen.consume(paint(screen, 0, "| a | b |"), nowNanos = 0)
+
+        screen.consume(paint(screen, 0, "NEXT"), nowNanos = 400_000_000L)
+
+        val captured = screen.drainReplaceCaptures()
+        assertEquals(1, captured.size)
+        assertTrue(rowText(captured, 0).startsWith("| a | b |"))
+    }
+
+    @Test
+    fun purgeRemovesPipeTableRows() {
+        val screen = TerminalScreen(columns = 54, rows = 6, excludedBottomRows = 2)
+        screen.consume(altEnter, nowNanos = 0)
+        screen.appendExternalRows(
+            listOf(
+                "| 方式 | 行为 | 现状 |",
+                "|---|---|---|",
+                "  | **降采样先行版** | 另做一个低精度 SOG（几十 MB） |",
+                "  我的建议：先用缓存方案观察体验",
+            ).map { text ->
+                Array(54) { col -> TerminalCell(text = if (col < text.length) text[col].toString() else " ") }
+            },
+        )
+
+        assertEquals(3, screen.purgeStatusRows())
+        assertEquals(1, screen.scrollbackSize())
+        assertEquals("  我的建议：先用缓存方案观察体验", screen.exportScrollbackText()[0].trimEnd())
+    }
+
+    @Test
+    fun repaintFragmentIsNotCaptured() {
+        // Claude repaints the response area non-sequentially — a row
+        // captured at overwrite time is often an INTERMEDIATE fragment
+        // whose final form is still on screen (user report 2026-08-14:
+        // jumbled multi-generation rows in the history). A capture whose
+        // text is contained in another on-screen row is such a fragment.
+        val screen = TerminalScreen(columns = 54, rows = 6, excludedBottomRows = 2)
+        screen.consume(altEnter, nowNanos = 0)
+        // The fragment (row 0) and its final, longer form (row 1).
+        screen.consume(paint(screen, 0, "转换工具链（splat-transform"), nowNanos = 0)
+        screen.consume(paint(screen, 1, "转换工具链（splat-transform 是否支持输出）"), nowNanos = 0)
+
+        screen.consume(paint(screen, 0, "NEXT"), nowNanos = 400_000_000L)
+
+        assertTrue(screen.drainReplaceCaptures().isEmpty())
+    }
+
+    @Test
+    fun uniqueScrolledRowIsStillCaptured() {
+        // The fragment rule must NOT block genuine history: a row whose
+        // content is NOT visible elsewhere (it scrolled off) is captured.
+        val screen = TerminalScreen(columns = 54, rows = 6, excludedBottomRows = 2)
+        screen.consume(altEnter, nowNanos = 0)
+        screen.consume(paint(screen, 0, "1234567") + paint(screen, 1, "ABCDEFG"), nowNanos = 0)
+
+        screen.consume(paint(screen, 0, "NEW"), nowNanos = 400_000_000L)
+
+        val captured = screen.drainReplaceCaptures()
+        assertEquals(1, captured.size)
+        assertEquals("1234567", rowText(captured, 0))
+    }
+
+    @Test
+    fun userRowIsCapturedEvenWhenTextRepeats() {
+        // ❯ rows are the anchors of each turn — a repeated user message
+        // must still enter history even though its text is on screen.
+        val screen = TerminalScreen(columns = 54, rows = 6, excludedBottomRows = 2)
+        screen.consume(altEnter, nowNanos = 0)
+        screen.consume(paint(screen, 0, "❯ 我们继续看看这个方案"), nowNanos = 0)
+        screen.consume(paint(screen, 1, "❯ 我们继续看看这个方案"), nowNanos = 0)
+
+        screen.consume(paint(screen, 0, "NEXT"), nowNanos = 400_000_000L)
+
+        val captured = screen.drainReplaceCaptures()
+        assertEquals(1, captured.size)
+        assertTrue(rowText(captured, 0).startsWith("❯"))
+    }
+
+    @Test
+    fun toolBlockRowIsNotCaptured() {
+        // The TUI indents the running command and its output with ⎿ —
+        // tool CHROME, not conversation content (user report 2026-08-14:
+        // history cluttered with tool-call inputs).
+        val screen = TerminalScreen(columns = 54, rows = 6, excludedBottomRows = 2)
+        screen.consume(altEnter, nowNanos = 0)
+        screen.consume(paint(screen, 0, "⎿  $ echo === via CF ==="), nowNanos = 0)
+        screen.consume(paint(screen, 1, "⎿  服务端头完全正确"), nowNanos = 0)
+
+        screen.consume(paint(screen, 0, "NEXT"), nowNanos = 400_000_000L)
+        screen.consume(paint(screen, 1, "NEXT"), nowNanos = 400_000_000L)
+
+        assertTrue(screen.drainReplaceCaptures().isEmpty())
+        // Existing captured tool rows are purged too.
+        screen.appendExternalRows(
+            listOf("⎿  $ bash deploy.sh", "✅ 修复完成").map { text ->
+                Array(54) { col -> TerminalCell(text = if (col < text.length) text[col].toString() else " ") }
+            },
+        )
+        assertEquals(1, screen.purgeStatusRows())
+        assertEquals(1, screen.scrollbackSize())
+    }
+
+    @Test
+    fun browseSkipsScrollbackTailWhenScreenLeadingRowsNotCaptured() {
+        // Streaming repaints copy the CURRENT turn (screen rows B1-B3) into
+        // the scrollback; the screen's LEADING rows (A1-A2) were never
+        // captured (timing gaps), so the forward anchor fails and the old
+        // overlap left the current turn doubled at the browse junction
+        // (bug 2026-08-14). The upward anchor (scrollback last row on
+        // screen) must dedupe it.
+        val screen = TerminalScreen(columns = 10, rows = 6, excludedBottomRows = 2)
+        screen.consume(altEnter, nowNanos = 0)
+        screen.consume(
+            paint(screen, 0, "A1") + paint(screen, 1, "A2") +
+                paint(screen, 2, "B1") + paint(screen, 3, "B2") + paint(screen, 4, "B3"),
+            nowNanos = 0,
+        )
+        screen.appendExternalRows(
+            listOf("A0", "B1", "B2", "B3").map {
+                Array(10) { col -> TerminalCell(text = if (col < it.length) it[col].toString() else " ") }
+            },
+        )
+
+        val view = screen.snapshot(scrollOffsetRows = 6)
+        val text = view.joinToString("\n") { it.joinToString("") { c -> c.text }.trimEnd() }.trim()
+        // A0 (scrollback) + the whole screen — B1-B3 appear exactly once.
+        assertEquals("A0\nA1\nA2\nB1\nB2\nB3", text)
+    }
+
+    @Test
+    fun settleTrimDropsScreenDuplicateSuffix() {
+        // The persist-time trim (trimSettledScrollback): scrollback tail ==
+        // screen rows (repaint copies) must be dropped so the FILE and the
+        // browse view never carry the current turn twice.
+        val screen = TerminalScreen(columns = 10, rows = 6, excludedBottomRows = 2)
+        screen.consume(altEnter, nowNanos = 0)
+        screen.consume(
+            paint(screen, 0, "OLD1") + paint(screen, 1, "OLD2") +
+                paint(screen, 2, "B1") + paint(screen, 3, "B2") + paint(screen, 4, "B3"),
+            nowNanos = 0,
+        )
+        screen.appendExternalRows(
+            listOf("OLD0", "B1", "B2", "B3").map {
+                Array(10) { col -> TerminalCell(text = if (col < it.length) it[col].toString() else " ") }
+            },
+        )
+        assertEquals(4, screen.scrollbackSize())
+
+        assertEquals(3, screen.trimScrollbackScreenSuffix())
+        assertEquals(1, screen.scrollbackSize())
+        assertEquals("OLD0", screen.exportScrollbackText()[0].trimEnd())
+    }
 
     @Test
     fun browseSkipsScrollbackTailShownByScreen() {

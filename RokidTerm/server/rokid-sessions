@@ -620,8 +620,12 @@ def emit_block(lines, prefix):
     for ln in lines:
         # Strip ANSI CSI sequences (slash-command outputs carry bold codes).
         ln = re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", ln)
+        # 2000-char cap (was 100 — long user prompts were truncated before
+        # the app could wrap them; the client wraps at its 54-column grid,
+        # user report 2026-08-14: restored history looked unwrapped and
+        # prompts vanished).
         clean = "".join(ch if ord(ch) >= 0x20 else " " for ch in ln)
-        out.append((prefix + clean[:100]) if clean.strip() else "")
+        out.append((prefix + clean[:2000]) if clean.strip() else "")
 
 with open(path, encoding="utf-8", errors="replace") as fh:
     for line in fh:

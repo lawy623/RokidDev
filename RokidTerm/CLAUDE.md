@@ -132,18 +132,60 @@ Verified on the current glasses and Tencent Cloud server:
   SETTLED row's old content right before the first overwrite of that row
   in a chunk (`TerminalScreen.maybeCaptureRowBeforeOverwrite`): stability
   50 ms (blocks TCP-split partial repaints, passes ~100 ms streaming
-  ticks), no column gate, bottom 3 rows excluded (input/divider/status).
-  Captures are PROVISIONAL for one chunk (a shift capture discards them —
-  displaced rows stay on screen; a quiet settle or the 150-row cap flushes
-  them as genuine scrolled-off content, filtered against rows still on
-  screen). Verified: `seq 1 2000` is fully browsable live.
+  ticks), no column gate, bottom 7 rows excluded (input/divider/status —
+  raised from 3 when the "Cooking for" spinner line started flooding the
+  history). Captures are PROVISIONAL for one chunk (a shift capture
+  discards them — displaced rows stay on screen; a quiet settle or the
+  150-row cap flushes them as genuine scrolled-off content, filtered
+  against rows still on screen). Verified: `seq 1 2000` is fully
+  browsable live.
+- **Capture noise rules (2026-08-14, `ClaudeStatusRows`)**: Claude's TUI
+  paints transient chrome that must never enter history, matched by
+  CONTENT (positions shift between versions — "Cooking for" at row 29,
+  "Combobulating…" at row 28):
+  - thinking/tool status rows: spinner glyph (✻✶✽✢✹) + ellipsis verb,
+    ticking timer (`for 3m 59s`, `(30s ·`), `(thinking…)` state;
+  - pipe-form markdown tables (`| 方式 | 行为 | 现状 |`): streaming
+    INTERMEDIATES — the final repaint renders box-drawing tables, and the
+    pipe copy (misaligned) must not become history;
+  - tool-execution blocks (`⎿ $ bash …`, `⎿ Output: …`, `⎿ Tip: …`): tool
+    chrome, not conversation content;
+  - **repaint-fragment rule**: Claude repaints the response area
+    non-sequentially, so an overwritten row is often an intermediate
+    fragment whose FINAL form is still on screen — skip a capture whose
+    text is contained in any other on-screen row (≥6 chars; `❯` user rows
+    exempt). One general rule that prevents the jumbled multi-generation
+    fragments, duplicated box tables and repeated lines.
+  `purgeStatusRows()` (status + pipe-table + tool rows) cleans rows
+  captured before the signatures existed; it runs on settle and on every
+  persist, so files are rewritten clean.
+- **Persistence hardening (2026-08-14)**: scrollback now persists
+  INCREMENTALLY — every 500 new rows AND at every conversation-turn end
+  (3 s of output quiet, while the user is reading/typing — an invisible
+  write point; `persistOnSettle`), so an abnormal exit loses at most the
+  last few dozen rows instead of the whole session. `persistScrollback`
+  falls back to `lastBoundEndpoint` when Backing out of the terminal
+  cleared `activeEndpoint` (bug: the file stayed at yesterday's
+  timestamp). Every persist first runs `trimSettledScrollback()` (suffix
+  trim + noise purge) so the FILE never carries the current turn's
+  repaint copies or noise rows.
+- **Import wrapping (2026-08-14)**: the server transcript export emits
+  LOGICAL lines (cap raised 100 → 2000 chars — long user prompts were
+  truncated before the app could wrap them). The import now WRAPS lines
+  at the 54-column grid instead of truncating (`TerminalScreen.textRows`,
+  SGR backgrounds carry across wrapped rows), so restored history wraps
+  and completes exactly like the live screen.
 - **Reconnect dedup + style unification (2026-08-14)**: after a resume,
   the imported export tail equals the attached screen's leading rows — the
   browse view (scrollback + live screen) showed the tail twice. Fixed at
   the RENDER level: `snapshot()` computes `screenOverlap()` (scrollback
   tail rows matching the screen's leading rows, whitespace-insensitive)
   and skips them — the screen supplies them once. No timing, always
-  correct. Imported history is styled like the live screen: rows get the
+  correct. 2026-08-14 second anchor: streaming repaint copies put the
+  current turn's rows in the scrollback AND on screen; when the forward
+  anchor misses (leading rows never captured), an UPWARD anchor (the
+  scrollback's last row matched against the screen, walked upward) covers
+  it. Imported history is styled like the live screen: rows get the
   TUI's 2-space indent and `❯` user rows get the `ESC[48;5;237m`/`49m`
   background marker (the exact marker live-captured rows carry) so
   browsing imported history looks like in-app live history.
@@ -168,18 +210,20 @@ Verified on the current glasses and Tencent Cloud server:
   rows). Hardware-verified 2026-08-06: single-session history grows long.
   Regression suite: `ScrollCaptureRegressionTest` (7 tests, byte streams
   mirror the real 54x36 tmux/Claude redraw).
-- Scrollback persistence (2026-08-06): history is saved per endpoint to
-  app-private `filesDir/scrollback_<endpointId>.txt` (text rows with inline
-  SGR `48;5;Nm`/`49m` markers so user-message background fills survive the
-  round trip; older plain-text files still import) on
-  Back/exit, SSH disconnect, and `onStop`/`onDestroy`; restored on
-  connect via `importScrollbackText` (primary screen only; ignored while
-  the alternate screen is active). Storage is bounded: the file keeps
-  only the most recent `PERSISTED_SCROLLBACK_ROWS` (1000) rows (~50-150
-  exchanges, ~55 KB/endpoint) and is overwritten each session — it never
-  accumulates. In-memory browsing keeps the full 5000-row cap. Live
-  screen content still comes from the tmux attach redraw — only the
-  scrollback is persisted. Files are now keyed per conversation (2026-08-07); see Open/pending.
+- Scrollback persistence (2026-08-06, incremental 2026-08-14): history is
+  saved per endpoint to app-private `filesDir/scrollback_<endpointId>.txt`
+  (text rows with inline SGR `48;5;Nm`/`49m` markers so user-message
+  background fills survive the round trip; older plain-text files still
+  import) on Back/exit, SSH disconnect, `onStop`/`onDestroy`, every 500
+  new rows, and at every conversation-turn end (3 s quiet — the user is
+  idle then); restored on connect via `importScrollbackText` (primary
+  screen only; ignored while the alternate screen is active). Storage is
+  bounded: the file keeps only the most recent `PERSISTED_SCROLLBACK_ROWS`
+  (1000) rows (~50-150 exchanges, ~55 KB/endpoint) and is overwritten
+  each session — it never accumulates. In-memory browsing keeps the full
+  5000-row cap. Live screen content still comes from the tmux attach
+  redraw — only the scrollback is persisted. Files are now keyed per
+  conversation (2026-08-07); see Open/pending.
 - SGR background colors parsed and rendered as light fills (Claude Code
   user-message blocks separated from output).
 - Terminal-mode Shutter swapped (2026-08-06): single = return to bottom

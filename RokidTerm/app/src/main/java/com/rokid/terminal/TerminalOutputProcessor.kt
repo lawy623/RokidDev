@@ -55,12 +55,36 @@ class TerminalOutputProcessor(
         screen.trimScrollbackTurns(userCount)
         // Fallback for screens with no visible user turn (2026-08-13).
         val suffix = screen.trimScrollbackScreenSuffix()
+        // Clean out status rows captured before this build's signature check
+        // (2026-08-14: "Combobulating…" tick spam).
+        val purged = screen.purgeStatusRows()
         val after = screen.scrollbackSize()
-        logDiag("trim users=$userCount suffix=$suffix size=$before->$after", warn = false)
+        logDiag("trim users=$userCount suffix=$suffix purged=$purged size=$before->$after", warn = false)
         scrollBaseline = emptyList()
         scrollOffsetRows = 0
         hasNewOutput = false
         revision++
+    }
+
+    /**
+     * Settle-time dedup (2026-08-14): drops the scrollback suffix whose rows
+     * the live screen already shows — streaming repaints copy the current
+     * turn's rows into the scrollback, so the same text sits in both, and
+     * the browse view (scrollback + screen) renders the current turn twice
+     * ("the new turn inserts into the earlier conversation", user report
+     * 2026-08-14). Row-text-based only: rows NOT on the screen are never
+     * touched (unlike [trimScrollbackToScreen], this must not drop turns
+     * that merely scrolled off). Runs on every persist so the FILE also
+     * stays free of the duplicate.
+     */
+    @Synchronized
+    fun trimSettledScrollback() {
+        // Noise purge (status ticks + pipe-form table rows) runs on every
+        // persist so rows captured in earlier builds get cleaned from the
+        // file too (2026-08-14).
+        val purged = screen.purgeStatusRows()
+        val suffix = screen.trimScrollbackScreenSuffix()
+        if (suffix > 0 || purged > 0) logDiag("settle-trim suffix=$suffix purged=$purged", warn = false)
     }
     private var scrollOffsetRows = 0
     private var hasNewOutput = false

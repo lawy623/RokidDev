@@ -173,28 +173,63 @@ class TerminalScreen(
      * Rows at the END of the scrollback that the live screen's LEADING
      * rows already show (bug 2026-08-13). Matched whitespace-insensitively
      * — the TUI renders its own indentation and CJK spacing, and the
-     * exported transcript does not. Anchored on the screen's first row
-     * (the last scrollback occurrence of that text), then matched forward
-     * contiguously.
+     * exported transcript does not. Two anchor strategies, the larger
+     * overlap wins (both only ever count rows whose text appears on the
+     * screen, so skipping the max is safe):
+     *  1. Forward anchor on the screen's first row (the last scrollback
+     *     occurrence), matched forward contiguously — the resume-import
+     *     case, where the transcript's tail starts at the screen's top.
+     *  2. Upward anchor (2026-08-14): streaming repaints COPY the current
+     *     turn into the scrollback, so the scrollback's LAST row also sits
+     *     on the screen; match upward from the screen's bottom-most
+     *     occurrence. This is the case the forward anchor misses when the
+     *     screen's leading rows were never captured (timing gaps) and the
+     *     current turn otherwise renders twice at the browse junction.
      */
     private fun screenOverlap(): Int {
         if (scrollback.isEmpty() || active.cells.isEmpty()) return 0
+        // Strategy 1: forward anchor on the screen's leading row.
+        var overlap = 0
         val anchorText = active.cells[0].compactText()
-        if (anchorText.isEmpty()) return 0
-        var anchor = -1
-        for (i in scrollback.indices.reversed()) {
-            if (scrollback[i].compactText() == anchorText) {
-                anchor = i
-                break
+        if (anchorText.isNotEmpty()) {
+            var anchor = -1
+            for (i in scrollback.indices.reversed()) {
+                if (scrollback[i].compactText() == anchorText) {
+                    anchor = i
+                    break
+                }
+            }
+            if (anchor >= 0) {
+                var k = 0
+                while (anchor + k < scrollback.size && k < active.cells.size &&
+                    scrollback[anchor + k].compactText() == active.cells[k].compactText()
+                ) {
+                    k++
+                }
+                overlap = k
             }
         }
-        if (anchor < 0) return 0
-        var k = 0
-        while (anchor + k < scrollback.size && k < active.cells.size) {
-            if (scrollback[anchor + k].compactText() != active.cells[k].compactText()) break
-            k++
+        // Strategy 2: upward anchor on the scrollback's last row.
+        val tailText = scrollback.last().compactText()
+        if (tailText.isNotEmpty()) {
+            var j = -1
+            for (i in active.cells.indices.reversed()) {
+                if (active.cells[i].compactText() == tailText) {
+                    j = i
+                    break
+                }
+            }
+            if (j >= 0) {
+                var k = 0
+                while (k <= j && k < scrollback.size &&
+                    scrollback[scrollback.size - 1 - k].compactText() == active.cells[j - k].compactText()
+                ) {
+                    k++
+                }
+                if (k > overlap) overlap = k
+            }
         }
-        return k
+        return overlap
     }
 
     private fun List<TerminalCell>.compactText(): String =
@@ -342,7 +377,7 @@ class TerminalScreen(
         if (rows.isEmpty() || active !== primary) return
         scrollback.clear()
         totalScrollbackRowsAppended = 0L
-        rows.forEach { appendScrollbackRow(textRow(it)) }
+        rows.forEach { line -> textRows(line).forEach { appendScrollbackRow(it) } }
     }
 
     /**
@@ -368,15 +403,27 @@ class TerminalScreen(
         if (rows.isEmpty()) return
         scrollback.clear()
         totalScrollbackRowsAppended = 0L
-        rows.forEach { appendScrollbackRow(textRow(it)) }
+        rows.forEach { line -> textRows(line).forEach { appendScrollbackRow(it) } }
     }
 
-    private fun textRow(text: String): Array<TerminalCell> {
-        val row = Array(columns) { TerminalCell() }
+    /**
+     * Parses a persisted/exported line into scrollback rows, WRAPPING at
+     * [columns] instead of truncating — bug 2026-08-14: the server
+     * transcript export emits logical lines up to 100 chars; truncation
+     * silently dropped every long line's tail, so restored history looked
+     * unwrapped and incomplete (and the user's own prompts vanished).
+     * The live screen wraps at the same width, so wrapped import rows
+     * render identically. SGR backgrounds carry across wrapped rows so
+     * user-message blocks keep their fill (the live TUI fills the whole
+     * block too).
+     */
+    private fun textRows(text: String): List<Array<TerminalCell>> {
+        val result = ArrayList<Array<TerminalCell>>()
+        var row = Array(columns) { TerminalCell() }
         var column = 0
         var index = 0
         var background: Int? = null
-        while (index < text.length && column < columns) {
+        while (index < text.length) {
             when {
                 text.startsWith(SGR_BG_256_PREFIX, index) -> {
                     val end = text.indexOf('m', index)
@@ -396,13 +443,18 @@ class TerminalScreen(
                     index += Character.charCount(codePoint)
                     val width = displayWidth(codePoint)
                     val style = TerminalStyle(background = background)
+                    if (width > 0 && column + width > columns) {
+                        // Does not fit — wrap to a new grid row (auto-wrap).
+                        result.add(row)
+                        row = Array(columns) { TerminalCell() }
+                        column = 0
+                    }
                     when (width) {
                         1 -> {
                             row[column] = TerminalCell(String(Character.toChars(codePoint)), style = style)
                             column++
                         }
                         2 -> {
-                            if (column + 1 >= columns) return row
                             row[column] = TerminalCell(
                                 String(Character.toChars(codePoint)),
                                 span = 2,
@@ -415,7 +467,8 @@ class TerminalScreen(
                 }
             }
         }
-        return row
+        result.add(row)
+        return result
     }
 
     fun cursor(): TerminalCursor = TerminalCursor(
@@ -425,8 +478,14 @@ class TerminalScreen(
     )
 
     fun plainText(): String = active.cells.joinToString("\n") { terminalRow ->
-        terminalRow.joinToString("") { cell -> if (cell.continuation) "" else cell.text }.trimEnd()
+        rowText(terminalRow)
     }
+
+    /** Text of one cell row (continuation cells skipped, trailing spaces trimmed). */
+    private fun rowText(row: Array<TerminalCell>): String = rowText(row.asIterable())
+
+    private fun rowText(row: Iterable<TerminalCell>): String =
+        row.joinToString("") { cell -> if (cell.continuation) "" else cell.text }.trimEnd()
 
     private fun consumeCodePoint(codePoint: Int) {
         when (state) {
@@ -700,12 +759,60 @@ class TerminalScreen(
         // silently blocked every capture of a fast seq run.
         val row = active.row
         if (row >= rows - excludedBottomRows) return
+        // Claude's floating status row (thinking timer / tool summary) ticks
+        // ~1/s wherever it sits — the position-based exclusion above cannot
+        // track it (was row 29 for "Cooking for", row 28 for "Combobulating…",
+        // user report 2026-08-14: 467 captured ticks flooded the history).
+        // Never capture status rows, wherever they are. Pipe-form markdown
+        // tables are streaming INTERMEDIATES — the final repaint renders
+        // them as box-drawing tables, and the pipe copy must not become
+        // history (user report 2026-08-14).
+        val oldText = rowText(active.cells[row])
+        if (ClaudeStatusRows.isStatusRow(oldText) || ClaudeStatusRows.isPipeTableRow(oldText) ||
+            ClaudeStatusRows.isToolBlockRow(oldText)
+        ) return
+        // Repaint-fragment rule (2026-08-14): Claude repaints the response
+        // area non-sequentially and repeatedly, so a row captured at
+        // overwrite time is often an INTERMEDIATE fragment whose final form
+        // is still elsewhere on the screen — those fragments jumbled the
+        // history (rows from different repaint generations interleaved, the
+        // box-drawing table captured twice). Skip a capture whose text is
+        // contained in any OTHER screen row (the final, superset form).
+        // User rows (❯) are the anchors of each turn — always captured.
+        if (!oldText.startsWith("❯") && oldText.length >= MIN_FRAGMENT_CHARS) {
+            val oldCompact = oldText.filterNot { it.isWhitespace() }
+            if (oldCompact.length >= MIN_FRAGMENT_CHARS &&
+                active.cells.indices.any { other ->
+                    other != row && compactCellRow(active.cells[other]).contains(oldCompact)
+                }
+            ) return
+        }
         if (!capturedThisChunk.add(row)) return
         if (chunkNanos - lastWriteNanos[row] < stabilityNanos) return
         // A blank row's "old content" is nothing — first paints of a frame
         // must not fabricate empty history rows.
         if (active.cells[row].all { it.text.isBlank() }) return
         pendingCaptures[row] = active.cells[row].toList()
+    }
+
+    private fun compactCellRow(row: Array<TerminalCell>): String =
+        row.joinToString("") { cell -> if (cell.continuation) "" else cell.text }.filterNot { it.isWhitespace() }
+
+    /**
+     * Drops captured Claude noise rows (status ticks + pipe-form markdown
+     * tables) from the scrollback (2026-08-14). Runs on screen settle so
+     * rows captured before the signatures existed in this build get cleaned
+     * out of memory (and the next persist rewrites the file clean).
+     * Returns how many rows were removed.
+     */
+    fun purgeStatusRows(): Int {
+        val before = scrollback.size
+        scrollback.removeAll { row ->
+            val text = rowText(row)
+            ClaudeStatusRows.isStatusRow(text) || ClaudeStatusRows.isPipeTableRow(text) ||
+                ClaudeStatusRows.isToolBlockRow(text)
+        }
+        return before - scrollback.size
     }
 
     /**
@@ -989,9 +1096,19 @@ class TerminalScreen(
          *  borderline gaps still throttled captures). */
         private const val STABILITY_NANOS = 50_000_000L
 
-        /** Input ❯ line + divider + tmux status (rows 33-35 of Claude's
-         *  36-row layout) never enter history. */
-        private const val EXCLUDED_BOTTOM_ROWS = 3
+        /** Claude's 36-row layout: conversation content occupies ~rows
+         *  0-28, then the spinner line ("✻ Sautéed for 3s"), blank, the
+         *  divider, the ❯ input line, another divider, and the tmux status
+         *  rows. Everything from the spinner down (7 rows) is UI chrome,
+         *  never history — frame evidence 2026-08-14 (the spinner's
+         *  "Cooking for…" changes were flooding the captured history). */
+        private const val EXCLUDED_BOTTOM_ROWS = 7
+
+        /** Repaint-fragment rule (2026-08-14): a capture whose text is
+         *  contained in another on-screen row is a streaming intermediate —
+         *  skip it. Rows shorter than this are too common (repeated short
+         *  lines) to risk the containment skip. */
+        private const val MIN_FRAGMENT_CHARS = 6
 
         /** Inline SGR markers used by scrollback persistence for background style. */
         private const val SGR_BG_256_PREFIX = "\u001b[48;5;"
