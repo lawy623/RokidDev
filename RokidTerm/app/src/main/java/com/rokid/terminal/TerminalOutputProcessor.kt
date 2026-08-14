@@ -25,6 +25,13 @@ class TerminalOutputProcessor(
     /** Scroll capture is suppressed until this nanoTime (resume replay). */
     private var suppressCaptureUntilNanos = 0L
 
+    /** Stateful capture suspension (2026-08-13): while an ask panel is
+     *  rendered, its row repaints must not enter the scrollback. Unlike
+     *  [suppressScrollCaptureFor] this is not time-windowed — panels can
+     *  stay open indefinitely. */
+    @Volatile
+    var captureSuspended: Boolean = false
+
     /**
      * Suppresses scroll capture for [durationMs] — called after a
      * conversation switch, because the resume replay scrolls the viewport
@@ -43,7 +50,13 @@ class TerminalOutputProcessor(
      */
     @Synchronized
     fun trimScrollbackToScreen() {
-        screen.trimScrollbackTurns(screen.activeScreenUserCount())
+        val userCount = screen.activeScreenUserCount()
+        val before = screen.scrollbackSize()
+        screen.trimScrollbackTurns(userCount)
+        // Fallback for screens with no visible user turn (2026-08-13).
+        val suffix = screen.trimScrollbackScreenSuffix()
+        val after = screen.scrollbackSize()
+        logDiag("trim users=$userCount suffix=$suffix size=$before->$after", warn = false)
         scrollBaseline = emptyList()
         scrollOffsetRows = 0
         hasNewOutput = false
@@ -61,6 +74,36 @@ class TerminalOutputProcessor(
      */
     private var scrollBaseline: List<Array<TerminalCell>> = emptyList()
     private var lastConsumeNanos = 0L
+
+    /** Provisional replace-captures awaiting confirmation (2026-08-13). */
+    private val pendingReplace = ArrayList<List<TerminalCell>>()
+
+    private fun accumulatePendingReplace(rows: List<List<TerminalCell>>) {
+        for (row in rows) {
+            val text = row.joinToString("") { it.text }
+            if (pendingReplace.any { it.joinToString("") { c -> c.text } == text }) continue
+            pendingReplace.add(row)
+        }
+    }
+
+    /**
+     * Appends provisional replace-captures whose text is GONE from the
+     * current screen (displaced duplicates in a shift repaint stay on
+     * screen and must not enter history).
+     */
+    private fun flushPendingReplace() {
+        if (pendingReplace.isEmpty()) return
+        val screenTexts = screen.snapshotRows().map { it.joinToString("") { c -> c.text } }
+        val survivors = pendingReplace.filter { old ->
+            val text = old.joinToString("") { it.text }
+            screenTexts.none { it == text }
+        }
+        if (survivors.isNotEmpty()) {
+            screen.appendExternalRows(survivors.map { it.toTypedArray() })
+            logDiag("cap rep n=${survivors.size}", warn = false)
+        }
+        pendingReplace.clear()
+    }
 
     /** Current terminal-history offset; 0 means live bottom. */
     val scrollOffset: Int get() = scrollOffsetRows
@@ -126,17 +169,44 @@ class TerminalOutputProcessor(
         // the resume replay genuinely SCROLLS (the conversation exceeds the
         // viewport) and would otherwise duplicate the imported transcript
         // (user report 2026-08-07 — 3 turns showed as 5).
-        if (altBefore && !captureSuppressed && now - lastConsumeNanos > quietRedrawNanos) {
+        val quiet = altBefore && !captureSuppressed && now - lastConsumeNanos > quietRedrawNanos
+        if (quiet) {
             scrollBaseline = screen.snapshotRows()
         }
         lastConsumeNanos = now
-        screen.consume(raw)
-        if (!captureSuppressed && screen.isAlternateActive() && scrollBaseline.isNotEmpty()) {
-            val afterRows = screen.snapshotRows()
-            val capture = findScrollCapture(scrollBaseline, afterRows)
-            if (capture != null) {
-                screen.appendExternalRows(scrollBaseline.subList(capture.start, capture.start + capture.k))
-                scrollBaseline = afterRows
+        screen.consume(raw, now)
+        if (!captureSuppressed && !captureSuspended && screen.isAlternateActive()) {
+            // Replace-captures are PROVISIONAL (design 2026-08-13): a
+            // partial repaint (split across reads) or a shift repaint both
+            // overwrite rows whose old text stays on screen — appending them
+            // immediately would duplicate history. They survive one chunk:
+            // a text-shift capture discards them (the shift covers the
+            // movement); a quiet settle on a LATER chunk flushes them as
+            // genuine scrolled-off content; a size cap bounds memory during
+            // sustained streaming.
+            val pendingBefore = pendingReplace.size
+            val replaced = screen.drainReplaceCaptures()
+            accumulatePendingReplace(replaced)
+            if (scrollBaseline.isNotEmpty()) {
+                val afterRows = screen.snapshotRows()
+                val capture = findScrollCapture(scrollBaseline, afterRows)
+                if (capture != null) {
+                    screen.appendExternalRows(scrollBaseline.subList(capture.start, capture.start + capture.k))
+                    scrollBaseline = afterRows
+                    pendingReplace.clear()
+                    logDiag("cap ok k=${capture.k} rows=${scrollBaseline.size} chunk=${raw.length}", warn = false)
+                } else {
+                    logDiag("cap miss rows=${scrollBaseline.size} chunk=${raw.length} pending=${pendingReplace.size}", warn = true)
+                }
+            }
+            // Flush rows that survived a whole chunk boundary and the
+            // current chunk's shift-capture (quiet = this chunk started a
+            // fresh settled frame — a captured row still missing from the
+            // new frame really did leave the screen).
+            if (quiet && pendingBefore > 0) {
+                flushPendingReplace()
+            } else if (pendingReplace.size >= PENDING_FLUSH_ROWS) {
+                flushPendingReplace()
             }
         }
         // Entering or leaving the alternate screen invalidates the baseline.
@@ -277,6 +347,22 @@ class TerminalOutputProcessor(
 
         /** Minimum fraction of rows that must agree (and span) to count as a shift. */
         private const val MIN_MATCH_FRACTION = 0.6
+
+        /** Replace-capture pending buffer cap: sustained streaming flushes
+         *  at this size even without a quiet settle, so history streams
+         *  into the browse view during a long run (~150 rows ≈ a few
+         *  screenfuls; logcat evidence 2026-08-13: with 2000 the pending
+         *  buffer never flushed during a seq burst) (2026-08-13). */
+        private const val PENDING_FLUSH_ROWS = 150
+        private const val TAG = "RokidTerminal"
+
+        /** android.util.Log is not mocked in JVM unit tests — diagnostics
+         *  are swallowed there and reach logcat on device. */
+        private fun logDiag(message: String, warn: Boolean) {
+            runCatching {
+                if (warn) android.util.Log.w(TAG, message) else android.util.Log.i(TAG, message)
+            }
+        }
 
         /** A redraw burst paused longer than this re-baselines the shift detector. */
         private const val QUIET_REDRAW_NANOS = 500_000_000L

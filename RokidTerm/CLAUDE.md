@@ -124,6 +124,29 @@ Verified on the current glasses and Tencent Cloud server:
 - Suggestion mechanism (Claude's `❯`-line light text) integrated: right
   key fills it dark, TP/ring long-press fills it, empty entry shows the
   remote light text; never stored in history.
+- **Streaming-output capture (2026-08-13/14, hardware-verified)**: Claude
+  Code repaints streaming output by OVERWRITING rows in place (cursor
+  addressing + erase-to-EOL — trace evidence: sweeps writing at column 5),
+  so the shift-matching below misses every frame of fast output (a
+  `seq 1 2000` run left only ~30 rows). The emulator now snapshots a
+  SETTLED row's old content right before the first overwrite of that row
+  in a chunk (`TerminalScreen.maybeCaptureRowBeforeOverwrite`): stability
+  50 ms (blocks TCP-split partial repaints, passes ~100 ms streaming
+  ticks), no column gate, bottom 3 rows excluded (input/divider/status).
+  Captures are PROVISIONAL for one chunk (a shift capture discards them —
+  displaced rows stay on screen; a quiet settle or the 150-row cap flushes
+  them as genuine scrolled-off content, filtered against rows still on
+  screen). Verified: `seq 1 2000` is fully browsable live.
+- **Reconnect dedup + style unification (2026-08-14)**: after a resume,
+  the imported export tail equals the attached screen's leading rows — the
+  browse view (scrollback + live screen) showed the tail twice. Fixed at
+  the RENDER level: `snapshot()` computes `screenOverlap()` (scrollback
+  tail rows matching the screen's leading rows, whitespace-insensitive)
+  and skips them — the screen supplies them once. No timing, always
+  correct. Imported history is styled like the live screen: rows get the
+  TUI's 2-space indent and `❯` user rows get the `ESC[48;5;237m`/`49m`
+  background marker (the exact marker live-captured rows carry) so
+  browsing imported history looks like in-app live history.
 - Scrollback capture fixed (2026-08-06, root-caused from the device
   trace): `snapshotRows()` returned live row arrays shared with the
   screen, so `consume()` mutated the "before" state and shift detection

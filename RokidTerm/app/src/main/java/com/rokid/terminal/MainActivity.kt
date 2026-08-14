@@ -1234,6 +1234,7 @@ class MainActivity : Activity() {
         if (switchInFlight) return
         android.util.Log.i("RokidTerminal", "mode -> COMPOSER (openComposer)")
         panelMode = false
+        terminalOutput.captureSuspended = false
         publishTerminalFrame(terminalOutput.returnToLive())
         speechDraft.reset()
         composer.clear()
@@ -1817,6 +1818,7 @@ class MainActivity : Activity() {
     private fun enterPanelMode() {
         if (mode != Mode.TERMINAL || panelMode) return
         panelMode = true
+        terminalOutput.captureSuspended = true   // panel repaints stay out of history (2026-08-13)
         terminalView.setPanelActive(true)
         panelEntryFingerprint = terminalView.frameFingerprint()
         lastNonBarePromptNanos = System.nanoTime()
@@ -1827,6 +1829,7 @@ class MainActivity : Activity() {
     private fun cancelPanelMode() {
         if (!panelMode) return
         panelMode = false
+        terminalOutput.captureSuspended = false
         askPanelMode = false
         askPanelComposer = false
         askPanelMultiSelect = false
@@ -1888,6 +1891,7 @@ class MainActivity : Activity() {
     private fun enterAskPanelMode(snap: AskPanelParser.Snapshot) {
         if (panelMode || mode != Mode.TERMINAL) return
         panelMode = true
+        terminalOutput.captureSuspended = true   // panel repaints stay out of history (2026-08-13)
         askPanelMode = true
         askPanelMultiSelect = snap.multiSelect
         askPanelTab = snap.tabPanel
@@ -2382,6 +2386,7 @@ class MainActivity : Activity() {
         activeEndpoint = endpoint
         mode = Mode.TERMINAL
         panelMode = false
+        terminalOutput.captureSuspended = false
         terminalView.showTerminal(endpoint, terminalOutput.reset())
         val identity = try {
             DeviceKeyStore(this, endpoint.id).getOrCreate()
@@ -2543,10 +2548,16 @@ class MainActivity : Activity() {
                     // After the replay settles, trim the imported transcript
                     // to the turns ABOVE the live screen — the screen shows
                     // the tail, and browsing appends the screen below the
-                    // scrollback (2026-08-07).
-                    mainHandler.postDelayed({
-                        if (sshState == "CONNECTED") terminalOutput.trimScrollbackToScreen()
-                    }, REPLAY_SUPPRESSION_MS + 1500L)
+                    // scrollback (2026-08-07). For RESUMED conversations the
+                    // trim is re-scheduled AFTER the server-export import
+                    // completes (2026-08-13: a large transcript's export can
+                    // land later than this fixed delay — trimming first and
+                    // importing after left the tail duplicated).
+                    if (isNew) {
+                        mainHandler.postDelayed({
+                            if (sshState == "CONNECTED") terminalOutput.trimScrollbackToScreen()
+                        }, REPLAY_SUPPRESSION_MS + 1500L)
+                    }
                     if (thenConnect) connectAfterSwitch(endpoint)
                     updateHeader()
                     android.widget.Toast.makeText(
@@ -2777,10 +2788,70 @@ class MainActivity : Activity() {
             val raw = fetcher.exportConversation(endpoint.workspace, folderPath, sessionId)
             runOnUiThread {
                 if (raw != null && raw.isNotBlank() && !raw.startsWith("error\t")) {
-                    terminalOutput.importScrollbackTextForce(raw.lineSequence().toList())
+                    // The live screen renders conversation rows with the
+                    // TUI's leading indentation (frame evidence 2026-08-14:
+                    // "  C975"); the exported transcript is plain text.
+                    // Indent imported history the same way so it renders
+                    // like in-app captured history (user 2026-08-14), and
+                    // restore the user-message background (SGR 48;5;237 —
+                    // the exact marker live-captured rows carry, verified
+                    // from the persisted file 2026-08-14) on ❯ rows so
+                    // imported history highlights like the live screen.
+                    val rows = raw.lineSequence().toList().map { row ->
+                        if (row.isBlank()) {
+                            row
+                        } else {
+                            val indented = "  $row"
+                            if (row.trimStart().startsWith("❯")) {
+                                "[48;5;237m$indented[49m"
+                            } else {
+                                indented
+                            }
+                        }
+                    }
+                    terminalOutput.importScrollbackTextForce(rows)
+                    // The trim must run only after the ATTACH REPAINT has
+                    // settled — the live screen then shows the conversation
+                    // tail, which is what the imported scrollback tail
+                    // duplicates in the browse view (bug 2026-08-13: a fixed
+                    // 1.5 s delay raced the repaint data stream; the screen
+                    // had not shown the tail yet, so the anchor was not
+                    // found and the tail stayed duplicated).
+                    scheduleTrimAfterScreenSettles()
                 }
             }
         }.start()
+    }
+
+    /**
+     * Polls the rendered frame until it has been STABLE for ~1.5 s, then
+     * trims the imported scrollback tail against the live screen. The
+     * attach repaint can take seconds to stream in; trimming against a
+     * half-repainted screen finds no anchor and leaves the duplicate.
+     */
+    private fun scheduleTrimAfterScreenSettles() {
+        val startedAt = android.os.SystemClock.uptimeMillis()
+        var lastFingerprint = ""
+        var stableStreak = 0
+        val poll = object : Runnable {
+            override fun run() {
+                if (sshState != "CONNECTED") return
+                val fp = terminalView.frameFingerprint()
+                if (fp == lastFingerprint) {
+                    stableStreak++
+                } else {
+                    stableStreak = 0
+                    lastFingerprint = fp
+                }
+                val minElapsed = android.os.SystemClock.uptimeMillis() - startedAt >= 2000L
+                if (stableStreak >= 3 && minElapsed) {
+                    terminalOutput.trimScrollbackToScreen()
+                } else {
+                    mainHandler.postDelayed(this, 500L)
+                }
+            }
+        }
+        mainHandler.postDelayed(poll, 500L)
     }
 
     private fun connectAfterSwitch(endpoint: EndpointProfile, useLegacy: Boolean = false) {
