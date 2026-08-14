@@ -4,13 +4,15 @@ Read and follow the project-specific guidance in `CLAUDE.md` in addition to the
 repository root `AGENTS.md`. `CLAUDE.md` is the detailed shared specification
 for architecture, test-server constraints, benchmarks, deployment, and security.
 
-## Deployment is live (August 4, 2026)
+## Deployment is live (August 14, 2026)
 
 The service runs on the test VM (`ubuntu@43.xx.xx.209`) at
-`127.0.0.1:8765`, one worker, model cached from HuggingFace
-(`FunAudioLLM/SenseVoiceSmall`, ~901 MiB). It survives reboots (venv + model
-cache on disk) but must be restarted manually with the command documented in
-`CLAUDE.md` → `## Deployment`.
+`127.0.0.1:8765`, one worker. **Default backend: sherpa-onnx SenseVoiceSmall
+int8** (`models/sense-voice-int8/model.int8.onnx`, ~350 MB RSS, ~1 s load).
+The funasr fp32 backend (`ASR_BACKEND=funasr`, weights cached from HuggingFace
+`FunAudioLLM/SenseVoiceSmall`) remains as a fallback. It survives reboots
+(venv + model files on disk) but must be restarted manually with the command
+documented in `CLAUDE.md` → `## Deployment`.
 
 ## Rules that must not be broken
 
@@ -25,10 +27,12 @@ cache on disk) but must be restarted manually with the command documented in
   regress `_rss_mb()` to `ru_maxrss` (peak value hides memory reductions).
 - Do not integrate ASR text into shell execution without an editable draft and
   explicit confirmation.
-- Dynamic int8 quantization (`ASR_QUANTIZE=1`) does **not** save memory on
-  PyTorch CPU (fp32 copy is kept); it only speeds inference ~20–25%. True
-  memory reduction requires ONNX/OpenVINO int8 — see `CLAUDE.md` → `## Model
-  strategy` for the unverified candidates.
+- **The default backend is sherpa-onnx int8** (`ASR_BACKEND=sherpa`,
+  ~350 MB RSS, verified 2026-08-14 against the 4 real recordings — see
+  `CLAUDE.md` → `## Model strategy` for the comparison table and the known
+  ITN artifacts). PyTorch dynamic int8 (`ASR_QUANTIZE=1`, funasr backend
+  only) does **not** save memory (fp32 copy is kept); it only speeds
+  inference ~20–25%.
 - ASR is on-demand: it starts via a PAM `pam_exec` hook when `rokid` logs in
   and stops ~60 s after the last `rokid` session closes. The glasses reach it
   through the `asr-fwd` account (permitopen restricted to `127.0.0.1:8765`).

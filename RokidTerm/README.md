@@ -104,6 +104,10 @@ export ANDROID_HOME="$HOME/Library/Android/sdk"
 
 FastAPI + SenseVoiceSmall 的服务端语音识别，作为 RokidTerm 组件维护（非独立仓库）。仅在 127.0.0.1 绑定，由受限 `asr-fwd` SSH 账号转发；识别结果不落盘、不记录转写日志。详见其目录内 `CLAUDE.md`。
 
+- **默认后端：sherpa-onnx SenseVoiceSmall int8**（2026-08-14 切换）——常驻 ~350 MB、模型加载 ~1 s、RTF ~0.10，中文与旧后端一致、英文不劣化（真机 4 录音验证）。
+- **funasr fp32 后端保留**（`ASR_BACKEND=funasr`，~1.9 GiB 常驻），如需回退可切换；HTTP API 契约两者一致，眼镜端无需改动。
+- 两后端的完整对比与精度说明见 `third_party/asr-server/CLAUDE.md` → `## Model strategy`。
+
 ## 服务端会话助手（server/）
 
 对话选择器与并发会话（2026-08-11，加固并真机验证 2026-08-13）由服务器端

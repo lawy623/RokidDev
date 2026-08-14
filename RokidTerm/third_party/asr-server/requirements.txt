@@ -1,5 +1,13 @@
-# FunASR's CPU backend. Keep the service single-worker on the 3.6 GiB test VM.
+# Default backend (ASR_BACKEND=sherpa): SenseVoiceSmall int8 via sherpa-onnx.
+# ~350 MB RSS, ~1 s model load. Weights live in models/ (git-ignored).
+sherpa-onnx>=1.12,<2
+numpy>=1.26
+
+# Optional fallback backend (ASR_BACKEND=funasr): fp32 SenseVoiceSmall via
+# funasr/torch. ~1.9 GiB RSS, ~30-60 s load. Only needed if the int8 backend
+# is disabled; installs torch, so leave it out of minimal deployments.
 funasr>=1.2.6,<2
+
 fastapi>=0.115,<1
 uvicorn[standard]>=0.34,<1
 python-multipart>=0.0.20,<1

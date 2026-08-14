@@ -17,15 +17,17 @@ The service is deliberately small and private-by-default:
 - does not log audio or full transcripts by default (`ASR_LOG_TRANSCRIPT=0`);
 - exposes timing and current RSS in the JSON response for benchmarking.
 
-## Current status (August 4, 2026) — DEPLOYED AND BENCHMARKED
+## Current status (August 14, 2026) — DEPLOYED AND BENCHMARKED
 
 The service is **fully deployed and verified** on the test VM. Real Rokid
 recordings transcribe correctly with good latency. See
 `## Deployment` and `## Benchmark results` below.
 
-Remaining work: server hardening (systemd unit, `ASR_QUANTIZE` decision) and
-the glasses integration path (SSH forward for the `rokid` user) — both
-documented at the end of this file.
+**Default backend is sherpa-onnx int8 (2026-08-14)** — see `## Model strategy`.
+The funasr fp32 backend remains available via `ASR_BACKEND=funasr`.
+
+Remaining work: server hardening (systemd unit) and live on-glasses re-test
+of the int8 backend — documented at the end of this file.
 
 ## Test server constraints
 
@@ -92,30 +94,32 @@ file=<16 kHz mono 16-bit PCM WAV>
 language=auto
 ```
 
-Representative response:
+Representative response (default sherpa int8 backend):
 
 ```json
 {
   "text": "识别文本",
   "language": "auto",
-  "model": "sensevoice-small",
-  "quantize": true,
+  "model": "sensevoice-small-int8",
   "audio_duration_ms": 4224.0,
   "sample_rate": 16000,
   "channels": 1,
   "queue_ms": 0.0,
-  "inference_ms": 800.0,
-  "total_ms": 810.0,
-  "rtf": 0.189,
-  "process_rss_mb": 1100.0
+  "inference_ms": 445.0,
+  "total_ms": 450.0,
+  "rtf": 0.105,
+  "process_rss_mb": 353.0
 }
 ```
 
-`process_rss_mb` reports **current** RSS from `/proc/self/statm`, NOT the
-process-lifetime peak (`ru_maxrss`). The peak reading stays high after the
-one-time model load and hides any later memory behavior — it must not be used
-to compare configurations. The `_rss_mb()` helper in `app/main.py` implements
-this correctly; do not regress it to `ru_maxrss`.
+`model` reports `sensevoice-small-int8` (sherpa) or `sensevoice-small`
+(funasr). The glasses client reads only the `text` field — the switch is
+client-invisible. `process_rss_mb` reports **current** RSS from
+`/proc/self/statm`, NOT the process-lifetime peak (`ru_maxrss`). The peak
+reading stays high after the one-time model load and hides any later memory
+behavior — it must not be used to compare configurations. The `_rss_mb()`
+helper in `app/main.py` implements this correctly; do not regress it to
+`ru_maxrss`.
 
 Also expose `GET /healthz`. A healthy process is not proof that the model is
 loaded; inspect `model_loaded` (and `quantize`) and perform a real
@@ -127,68 +131,80 @@ without changing the backend abstraction.
 
 ## Model strategy
 
-The first candidate is FunASR `iic/SenseVoiceSmall`, now loaded from
-HuggingFace (`FunAudioLLM/SenseVoiceSmall`, `hub=hf`) because ModelScope was
-slow from the overseas VM (~250 kB/s vs ~10 MB/s). It is non-autoregressive,
-multilingual, and a plausible fit for CPU inference. The backend intentionally
-omits a separate VAD model to reduce memory and because inputs are short
-utterances.
+Two interchangeable backends (`ASR_BACKEND` env, default `sherpa`):
 
-**Benchmark verdict (see results below):** SenseVoiceSmall with fp32 gives
-excellent mixed Chinese/English accuracy and fast CPU inference (RTF 0.14–0.17)
-on this VM. No other model needs to be evaluated for the current use case.
+| | **sherpa (default)** | **funasr (fallback)** |
+|---|---|---|
+| Runtime | sherpa-onnx (`OfflineRecognizer.from_sense_voice`) | funasr `AutoModel(SenseVoiceSmall)` + torch |
+| Weights | **int8 ONNX** `model.int8.onnx` (239 MB) | fp32 HF weights (~901 MB cache) |
+| Current RSS (measured) | **~350 MB** | ~1.9 GiB |
+| Model load (warm, measured) | **~1 s** | ~30 s (torch import + load; cold ~60 s) |
+| Inference RTF (measured) | **0.10–0.11** | 0.14–0.17 (fp32) / 0.12–0.13 (dyn int8) |
+| Quality (4 real recordings) | Chinese identical; English equal-or-better on 2/4, minor ITN artifacts on 1 command word | baseline (has its own English errors) |
+| ITN / punctuation | sherpa rule-based ITN (`use_itn=True`) | funasr `use_itn=True` + rich postprocess |
+| Deps | sherpa-onnx + numpy only | funasr + torch + torchaudio (~2 GiB install) |
 
-### Quantization findings (important, verified)
+Backend selection: `ASR_BACKEND=sherpa` (default) or `ASR_BACKEND=funasr`;
+`/healthz` reports `backend` and `model` (`sensevoice-small-int8` vs
+`sensevoice-small`). The HTTP API contract is identical for both — the
+glasses client reads only the `text` field, so switching backends is
+client-invisible.
 
-- **Dynamic int8 quantization (`quantize_dynamic` on Linear) does NOT save
-  memory.** PyTorch's CPU dynamic quantization keeps an fp32 copy of the
-  weights for fallback; the int8 packed weights are additional. Measured current
-  RSS is ~1.9 GiB both ways. What it *does* give is ~20–25% faster inference
-  (oneDNN int8 kernels) at a small accuracy cost on English tokens
-  (`youtube`→`youtu`, `wifi`→`wfi`) — negligible for a Chinese-first workload.
+### Quantization findings (important, verified 2026-08-14)
+
+- **sherpa-onnx int8 is the shipped default (2026-08-14).** Verified on the
+  VM against the 4 real Rokid recordings (mixed Chinese/English): RSS ~353 MB
+  (5.4× below funasr fp32), RTF 0.10–0.11, model load ~1 s. Chinese text is
+  identical on all 4 recordings; 2 English tokens came out *more* accurate
+  than the funasr baseline (`tlor swift` vs `tlor swiftt`,
+  `whisper local` vs `whisperloc`). The one defect class: sherpa's rule-based
+  ITN occasionally double-letters or drops spaces around English command words
+  (`请打开 settingss，查看wifi状态` — raw decoding is correct
+  `请打开 settings 查看 wifi 状态`, the artifact is ITN-only). This was
+  accepted by the user (Chinese-first; minor English drift acceptable).
+- **PyTorch dynamic int8 (`ASR_QUANTIZE=1`, funasr backend only) does NOT save
+  memory.** CPU dynamic quantization keeps an fp32 copy of the weights; the
+  int8 packed weights are additional. Measured RSS ~1.9 GiB both ways. What it
+  *does* give is ~20–25% faster inference at a small accuracy cost on English
+  tokens (`youtube`→`youtu`) — off by default.
 - **`model.half()` (fp16) on the whole model fails on CPU** with
   `Input type (FloatTensor) and weight type (HalfTensor)` because the speech
   features stay fp32. Do not attempt it.
 - **SenseVoiceSmall has no large embedding table** (only a small 16×560
   embedding), so "quantize the embedding" is not an available lever.
-- The `ASR_QUANTIZE=1` switch is implemented in `app/backends/sensevoice.py`
-  and reported by `/healthz`. It is currently left **off** (default `0`) until
-  the decision is made whether speed is worth the accuracy loss.
+- Rejected alternatives (no longer worth pursuing): self-exported ONNX int8
+  via onnxruntime (~1.3 GiB — funasr frontend still carries torch) and
+  OpenVINO `apinge/sensevoice-small-int8-asym-ov` (~1.2–1.4 GiB, extra
+  ~400 MB runtime dep). Both miss the sub-700 MB goal that sherpa-onnx hits.
 
-**Real memory-reduction directions (not yet implemented, listed in order of
-promise):**
-
-1. **ONNX export + true int8 quantization** (e.g. `onnxruntime` with the
-   `i8` quantized model). Exports to onnx via `torch.onnx.export`; quantizes
-   with `onnxruntime.quantization.quantize_dynamic` (weights stored as int8,
-   no fp32 copy); runs inference through `onnxruntime.InferenceSession`.
-   Realistic target: ~1.3 GiB current RSS (weights ~240 MB int8 + runtime).
-   Medium effort; export of SenseVoice's custom ops may need adjustment.
-2. **OpenVINO** — HF hosts `apinge/sensevoice-small-int8-asym-ov`; would need
-   the funasr frontend (feature extraction) plus OpenVINO session for the
-   backbone. Medium effort; extra runtime dependency (~400 MB).
-3. **Accept ~1.9 GiB** and tune: `torch.set_num_threads(2)` (small stack
-   reduction, slower inference), `OMP_NUM_THREADS=2`, and GC pressure
-   (`PYTHONMALLOC=malloc`). Low effort, low return.
-
-Decision is deferred until after the glasses integration is tested; the VM has
-enough memory for ASR alone, but not for ASR + heavy co-resident services.
+**Memory lessons:** `process_rss_mb` is current RSS from `/proc/self/statm`
+(see API contract) — the only honest metric for comparing configurations.
+`ru_maxrss` hides post-load reductions and must not be used.
 
 ## Deployment
 
 Deployment state (all on the test VM):
 
 - `/srv/RokidAsrServer` is the deployment copy; `.venv` is installed and
-  contains `funasr==1.4.1`, `torch==2.13.0+cpu` (from the PyTorch CPU index),
-  `torchaudio==2.11.0+cpu`, `fastapi`, `uvicorn`, `python-multipart`,
-  `requests`. `torchaudio` was a missing runtime dependency discovered during
-  the first live request — install it explicitly whenever creating the env.
-- The model is cached at `~/.cache/huggingface/hub/models--FunAudioLLM--SenseVoiceSmall`
-  (~901 MiB) and loads from disk in seconds; it survives reboot.
+  contains `sherpa-onnx==1.13.5`, `numpy`, `fastapi`, `uvicorn`,
+  `python-multipart`, `requests`, plus `funasr==1.4.1`,
+  `torch==2.13.0+cpu`, `torchaudio==2.11.0+cpu` (funasr fallback backend —
+  imported only when `ASR_BACKEND=funasr`; dormant torch costs no RSS).
+  `torchaudio` was a missing runtime dependency discovered during the first
+  live request — install it explicitly whenever creating the env.
+- The default backend's int8 weights live in
+  `/srv/RokidAsrServer/models/sense-voice-int8/` (`model.int8.onnx` 239 MB +
+  `tokens.txt`; copied from the sherpa-onnx release tarball
+  `sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17`). `models/` is
+  git-ignored; deploy model files separately, never through git. The funasr
+  fp32 weights stay cached at
+  `~/.cache/huggingface/hub/models--FunAudioLLM--SenseVoiceSmall`
+  (~901 MiB) for the fallback backend.
 - The service is started **manually** with nohup (not yet a systemd unit):
-  `ASR_HUB=hf ASR_MODEL=FunAudioLLM/SenseVoiceSmall ASR_QUANTIZE=0 nohup python -m uvicorn app.main:app --host 127.0.0.1 --port 8765 --workers 1 ...`
-- A persistent systemd unit is **deferred** until the quantization decision and
-  glasses integration are settled (see `## Next steps`).
+  `ASR_BACKEND=sherpa nohup python -m uvicorn app.main:app --host 127.0.0.1 --port 8765 --workers 1 ...`
+  (funasr fallback: `ASR_BACKEND=funasr ASR_HUB=hf ASR_MODEL=FunAudioLLM/SenseVoiceSmall`)
+- A persistent systemd unit is **deferred** until glasses integration of the
+  int8 backend is re-verified (see `## Next steps`).
 
 Deploying updated code from the Mac:
 
@@ -220,9 +236,20 @@ python benchmark/run_benchmark.py \
   test-artifacts/recordings/*.wav
 ```
 
-## Benchmark results (August 4, 2026, warm requests)
+## Benchmark results (warm requests, 2 vCPU EPYC 7K62, one worker)
 
-SenseVoiceSmall fp32, model cached, 2 vCPU EPYC 7K62, one worker:
+**Default: sherpa-onnx int8 (verified 2026-08-14):**
+
+| file | text | audio_ms | inference_ms | rtf | rss_mb |
+|---|---|---|---|---|---|
+| 145141 | 你好你好你好，我是乐奇。 | 4224 | 441 | 0.104 | ~353 |
+| 145157 | 请打开youtube，然后搜索tlor swift的最新MV。 | 6144 | 660 | 0.107 | ~353 |
+| 145211 | 今天我们测试whisper local ASR重点是中文和english混合识别。 | 7424 | 794 | 0.107 | ~353 |
+| 145227 | 请打开 settingss，查看wifi状态。 | 3968 | 445 | 0.112 | ~353 |
+
+Median inference 553 ms; model load ~1 s; current RSS **~350 MB**.
+
+**funasr fp32 baseline (August 4, 2026):**
 
 | file | text | audio_ms | inference_ms | rtf | rss_mb |
 |---|---|---|---|---|---|
@@ -231,15 +258,14 @@ SenseVoiceSmall fp32, model cached, 2 vCPU EPYC 7K62, one worker:
 | 145211 | 今天我们测试whisperloc ASR重点是中文和english混合识别。 | 7424 | 1044 | 0.141 | ~1900 |
 | 145227 | 请打开 settings ，查看 wifi 状态。 | 3968 | 667 | 0.168 | ~1900 |
 
-Median inference 848 ms; end-to-end ~1.6–2.0 s; first request after cold start
-~24–90 s (download or load+quantize); current RSS ~1.9 GiB.
+funasr + dynamic int8 (Linear): RTF 0.12–0.13, ~24% faster than fp32, same
+~1.9 GiB RSS, tiny English-token errors.
 
-SenseVoiceSmall + dynamic int8 (Linear): inference 524–882 ms (median 647 ms,
-~24% faster), RTF 0.12–0.13, same current RSS ~1.9 GiB, tiny English-token
-errors (see quantization findings). Chinese text is unaffected.
-
-Quality is judged **usable** by the user for the mixed Chinese/English test
-set; the English errors are minor. Chinese-first workloads are unaffected.
+Quality of the int8 backend is judged **usable** by the user for the mixed
+Chinese/English test set; Chinese is identical to the fp32 baseline on all 4
+recordings, English is equal-or-better on 2 of 4, and the only defect is a
+sherpa-ITN artifact on one command word (settingss / missing spaces). See
+`## Model strategy`.
 
 ## Benchmark methodology notes
 
@@ -409,18 +435,16 @@ unreachable from the public Internet.
 
 ## Next steps
 
-1. **Glasses app integration** — in RokidTerm, add the `asr-fwd` SSH
-   connection (separate from the `rokid` terminal session) plus
-   `AudioRecord` → WAV → HTTP transcribe → `SpeechDraftState` draft. Both the
-   PAM hook and the `asr-fwd` channel are verified; the remaining work is
-   Android-side. Test the full record → upload → transcribe → draft → confirm
-   path on hardware before claiming speech works.
+1. **Re-verify int8 on glasses (in progress, 2026-08-14)** — the sherpa int8
+   backend is deployed and benchmarked; the user re-tests speech input
+   end-to-end on the glasses (record → upload → transcribe → draft → confirm)
+   against the new backend before the code/doc changes are committed.
 2. **Sync discipline** — this `third_party/asr-server` directory is the source
    of truth; every code change must be deployed to `/srv/RokidAsrServer` (see
    `## Deployment`). Never edit the Mac copy and the server copy in parallel.
 3. **systemd unit** — deferred: the PAM hook already provides on-demand
    lifecycle; a systemd unit adds restart-on-crash only if desired later.
-4. **Quantization decision** — evaluate ONNX/int8 true quantization (target
-   ~1.3 GiB) only if the VM must co-host other services; otherwise keep fp32.
-   `ASR_QUANTIZE=1` (dynamic int8) speeds inference ~20–25% but does not
-   reduce memory; it is off by default.
+4. **Quantization — done (2026-08-14).** Default backend is sherpa-onnx int8
+   (~350 MB RSS, verified). funasr fp32 stays as `ASR_BACKEND=funasr`.
+   `ASR_QUANTIZE=1` (PyTorch dynamic int8) remains off; it does not reduce
+   memory.

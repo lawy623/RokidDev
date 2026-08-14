@@ -29,20 +29,28 @@ queued = 0
 _backend: object | None = None
 
 
-def get_backend() -> "SenseVoiceBackend":
-    """Lazily import + build the backend.
+def get_backend():
+    """Lazily import + build the backend for `ASR_BACKEND`.
 
-    The funasr/torch import takes ~60 s on the test VM; done at module level
-    it would keep uvicorn from listening for a minute, and the glasses'
-    connect-time warmup retries would all hit a refused port. Deferred, the
-    boot drops to ~3 s; the first (warmup) request then pays the import +
+    Model imports are heavy on the test VM (sherpa ~1 s; funasr/torch ~60 s);
+    done at module level they would keep uvicorn from listening. Deferred,
+    the boot drops to ~3 s; the first (warmup) request then pays the import +
     model load in one call, which the app's "ASR MODEL LOADING" state covers.
     """
     global _backend
     if _backend is None:
-        from .backends.sensevoice import SenseVoiceBackend
+        if settings.backend == "sherpa":
+            from .backends.sherpa import SherpaSenseVoiceBackend
 
-        _backend = SenseVoiceBackend(settings.model, settings.hub, settings.device, settings.quantize)
+            _backend = SherpaSenseVoiceBackend(
+                settings.sherpa_model, settings.sherpa_tokens, settings.sherpa_language, settings.threads
+            )
+        elif settings.backend == "funasr":
+            from .backends.sensevoice import SenseVoiceBackend
+
+            _backend = SenseVoiceBackend(settings.model, settings.hub, settings.device, settings.quantize)
+        else:
+            raise ValueError(f"unknown ASR_BACKEND {settings.backend!r} (expected sherpa|funasr)")
     return _backend
 
 
@@ -51,9 +59,9 @@ def healthz() -> dict[str, object]:
     backend = get_backend()
     return {
         "ok": True,
+        "backend": settings.backend,
         "model_loaded": backend._model is not None,
         "model": backend.model_name,
-        "quantize": backend.quantize,
         "device": settings.device,
         "bind": f"{settings.host}:{settings.port}",
     }
