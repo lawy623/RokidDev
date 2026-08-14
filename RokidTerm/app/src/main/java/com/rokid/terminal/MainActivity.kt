@@ -36,6 +36,18 @@ class MainActivity : Activity() {
     private lateinit var endpointStore: EndpointStore
     private lateinit var traceRecorder: TerminalTraceRecorder
     private val composer = InputComposerState()
+
+    /**
+     * COIDEA knob letter/digit pickers (user design 2026-08-14): left knob
+     * = a-zA-Z, right knob = 0-9. At most one is ACTIVE at a time — the
+     * last-rotated knob wins (only one candidate can render at the cursor);
+     * the 1 s stop commits the candidate as normal text.
+     */
+    private val letterPicker = KnobPicker(KnobPicker.LETTERS)
+    private val digitPicker = KnobPicker(KnobPicker.DIGITS)
+    private var activePicker: KnobPicker? = null
+    private var knobConfirmRunnable: Runnable = Runnable {}
+    private var knobConfirmPending = false
     private val speechDraft = SpeechDraftState(composer)
     private val mainHandler = Handler(Looper.getMainLooper())
     private var endpoints: List<EndpointProfile> = emptyList()
@@ -1027,6 +1039,26 @@ class MainActivity : Activity() {
                 refreshComposer("EDITING / SHUTTER DELETE / CLICK TO LISTEN")
                 return true
             }
+            KeyEvent.KEYCODE_9 -> {
+                // Left knob rotate RIGHT — letter picker (user design
+                // 2026-08-14); previously the detent typed "9" into the
+                // draft. One step per detent (every event, no repeat gate).
+                knobRotate(letterPicker, +1)
+                return true
+            }
+            KeyEvent.KEYCODE_7 -> {
+                knobRotate(letterPicker, -1)
+                return true
+            }
+            KeyEvent.KEYCODE_E -> {
+                // Right knob rotate RIGHT — digit picker (was "E").
+                knobRotate(digitPicker, +1)
+                return true
+            }
+            KeyEvent.KEYCODE_C -> {
+                knobRotate(digitPicker, -1)
+                return true
+            }
             KeyEvent.KEYCODE_8 -> {
                 // Left knob (confirm side, user decision 2026-08-06):
                 // single = recording toggle, double = send, 500 ms window.
@@ -1095,6 +1127,64 @@ class MainActivity : Activity() {
         val window = Runnable { composerShutterDoublePending = null }
         composerShutterDoublePending = window
         mainHandler.postDelayed(window, RIGHT_KNOB_DOUBLE_WINDOW_MS)
+    }
+
+    /**
+     * Knob rotation → picker step (user design 2026-08-14). Voice-off
+     * only: while recording the draft is voice-owned and rotations are
+     * ignored. The other knob's pending candidate is abandoned (only one
+     * candidate renders at the cursor); every detent re-arms the 1 s
+     * confirmation window — the candidate commits 1 s after the LAST
+     * rotation, and rotating at a boundary (before 'a' / after 'Z') is a
+     * no-op that still extends the window.
+     */
+    private fun knobRotate(picker: KnobPicker, direction: Int) {
+        if (asr.isListening) return
+        if (activePicker != picker) {
+            activePicker?.reset()
+            activePicker = picker
+        }
+        if (direction > 0) picker.stepRight() else picker.stepLeft()
+        val candidate = picker.candidate()
+        armKnobConfirm()
+        refreshComposer(
+            if (candidate != null) {
+                val kind = if (picker === letterPicker) "LETTER" else "DIGIT"
+                "$kind $candidate · 1S CONFIRM"
+            } else {
+                "KNOB PICK · ROTATE"
+            },
+        )
+    }
+
+    /** (Re)arms the 1 s stop-to-confirm window for the active picker. */
+    private fun armKnobConfirm() {
+        cancelKnobConfirm()
+        val picker = activePicker ?: return
+        knobConfirmPending = true
+        knobConfirmRunnable = Runnable {
+            knobConfirmPending = false
+            val candidate = picker.candidate() ?: return@Runnable
+            picker.reset()
+            activePicker = null
+            prepareManualComposerEdit()
+            composer.insertText(candidate.toString())
+            refreshComposer("EDITING / CLICK TO LISTEN")
+        }
+        mainHandler.postDelayed(knobConfirmRunnable, KNOB_CONFIRM_MS)
+    }
+
+    private fun cancelKnobConfirm() {
+        knobConfirmPending = false
+        mainHandler.removeCallbacks(knobConfirmRunnable)
+    }
+
+    /** Any other composer interaction abandons the pending picker — the
+     *  uncommitted candidate is never part of the draft text. */
+    private fun cancelKnobPicker() {
+        cancelKnobConfirm()
+        activePicker?.reset()
+        activePicker = null
     }
 
     /** Left knob in composer: single = recording toggle, double = send. */
@@ -1439,6 +1529,9 @@ class MainActivity : Activity() {
             refreshComposer("NOT CONNECTED / DRAFT NOT SENT")
             return
         }
+        // A pending knob candidate is not part of the draft — sending must
+        // not carry it (user design 2026-08-14).
+        cancelKnobPicker()
         // Drop any in-flight recording: its audio must never be transcribed
         // into the draft after the text has already been sent.
         asr.cancelRecording()
@@ -1496,6 +1589,7 @@ class MainActivity : Activity() {
 
     private fun cancelComposer(status: String) {
         if (mode != Mode.COMPOSER) return
+        cancelKnobPicker()
         // Drop any in-flight recording so it cannot linger or transcribe
         // later; the composer state is also never written to the header.
         asr.cancelRecording()
@@ -1522,6 +1616,9 @@ class MainActivity : Activity() {
     }
 
     private fun prepareManualComposerEdit() {
+        // Any manual edit abandons the pending knob candidate — it is not
+        // committed text yet (user design 2026-08-14).
+        cancelKnobPicker()
         // Stop the current recognition round before moving or editing its active
         // hypothesis. This prevents a late partial/final callback from anchoring
         // another span and duplicating text after a manual edit.
@@ -1532,7 +1629,9 @@ class MainActivity : Activity() {
     private fun refreshComposer(status: String? = null) {
         if (mode != Mode.COMPOSER) return
         if (status != null) composerStatus = status
-        terminalView.showComposer(composer.text, composer.cursor, composerStatus)
+        terminalView.showComposer(
+            composer.text, composer.cursor, composerStatus, activePicker?.candidate(),
+        )
     }
 
     // --- Command palette (contract in rules/composer.md) ---
@@ -3139,6 +3238,7 @@ class MainActivity : Activity() {
 
     private fun startSpeech() {
         if (mode != Mode.COMPOSER) return
+        cancelKnobPicker()
         android.util.Log.i("RokidTerminal", "startSpeech: mode=COMPOSER")
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             android.util.Log.w("RokidTerminal", "startSpeech: MIC PERMISSION DENIED")
@@ -3197,6 +3297,8 @@ class MainActivity : Activity() {
         const val SESSION_SYNC_MS = 30_000L
         /** Incremental scrollback persistence threshold (2026-08-14). */
         private const val PERSIST_INCREMENT_ROWS = 500
+        /** Knob picker stop-to-confirm window (user design 2026-08-14). */
+        private const val KNOB_CONFIRM_MS = 1_000L
         /** Turn-end persist quiet window (2026-08-14): no output for this
          *  long = the turn is over, write the file. */
         private const val TURN_SETTLE_MS = 3_000L

@@ -236,6 +236,11 @@ EventHub mapping includes the keyboard node). `meta=0x200000`
 | Right knob rotate left / press / rotate right (per detent) | `KEY_C` / `KEY_D` / `KEY_E` | 0x06/0x07/0x08 | `KEYCODE_C`/`D`/`E` (scan 46/32/18) |
 | Right knob press+rotate left / press+rotate right (per detent) | `KEY_F` / `KEY_G` | 0x09/0x0a | `KEYCODE_F`/`G` (scan 33/34) |
 
+In the composer, knob ROTATION is the letter/digit picker (2026-08-14,
+design in `composer.md` → Knob letter/digit picker): left knob = a-zA-Z,
+right knob = 0-9, 1 s stop commits at the cursor. The old behavior typed
+the detent's literal character (`7`/`9`/`C`/`E`) into the draft — gone.
+
 Design regularity: each knob occupies five consecutive keys
 (7/8/9/A/B and C/D/E/F/G), identical order
 (left / press / right / press+left / press+right), one event per detent.

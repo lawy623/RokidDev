@@ -80,6 +80,37 @@ The composer is a text editor, not a terminal-screen cursor:
 - JVM tests cover Chinese insertion and deletion/movement across surrogate
   emoji, combining sequences, emoji modifiers, flags, and ZWJ emoji.
 
+### Knob letter/digit picker (2026-08-14)
+
+COIDEA KM knob ROTATION inserts precise ASCII input at the cursor — for
+English letters and digits that speech recognition often garbles (user
+design 2026-08-14). Replaces the old behavior where knob detents typed
+the literal `7`/`9`/`C`/`E` characters into the draft.
+
+- **Left knob rotation** = letter picker, `a-z` then `A-Z` (52 items).
+  **Right knob rotation** = digit picker, `0-9` (10 items). One detent =
+  one step.
+- **Only when the composer is open AND not recording** (voice-off): while
+  recording the draft is voice-owned and detents are ignored (consumed,
+  never typed).
+- **Idle position is "one before the first item"**: only RIGHT rotation
+  wakes the picker (left is a no-op while idle); the right boundary is the
+  last item — rotating beyond it does nothing (no wrap). Once active,
+  left/right both move the停留 position; left from the first item returns
+  to the idle position (nothing selected).
+- The candidate renders **at the composer cursor** as a highlighted
+  (inverse) letter, visually distinct from committed text.
+- **Stop for 1 s = commit**: the letter/digit becomes normal draft text at
+  the cursor (deletable like typed input); the picker returns to idle and
+  the next rotation re-wakes it.
+- **Mutual exclusion**: at most one picker active — the last-rotated knob
+  takes over and the other knob's pending candidate is abandoned.
+- **Any other composer interaction abandons the pending candidate**
+  (typing, delete, cursor move, voice start, send, cancel, palette) — an
+  uncommitted candidate is never part of the draft. Sending never carries
+  it.
+- JVM tests: `KnobPickerTest` (range, boundaries, wake/reset).
+
 ### Continuous ASR insertion
 
 ASR partial results must be handled as a replaceable hypothesis span to

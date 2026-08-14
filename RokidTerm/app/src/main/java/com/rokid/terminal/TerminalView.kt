@@ -123,6 +123,8 @@ class TerminalView(context: Context) : View(context) {
     private var composerVisible = false
     private var composerText = ""
     private var composerCursor = 0
+    /** Knob picker candidate drawn at the cursor (highlighted, uncommitted). */
+    private var composerCandidate: Char? = null
     private var commandPaletteOpen = false
     private var commandPaletteItems: List<String> = emptyList()
 
@@ -283,12 +285,13 @@ class TerminalView(context: Context) : View(context) {
         )
     }
 
-    fun showComposer(text: String, cursor: Int, status: String) {
+    fun showComposer(text: String, cursor: Int, status: String, candidate: Char? = null) {
         if (!composerVisible) composerFirstVisibleLine = 0
         composerVisible = true
         composerText = text
         composerCursor = cursor.coerceIn(0, text.length)
         composerStatus = status
+        composerCandidate = candidate
         invalidate()
     }
 
@@ -297,6 +300,7 @@ class TerminalView(context: Context) : View(context) {
         composerText = ""
         composerCursor = 0
         composerStatus = ""
+        composerCandidate = null
         composerFirstVisibleLine = 0
         invalidate()
     }
@@ -924,7 +928,26 @@ class TerminalView(context: Context) : View(context) {
                 val cursorX = textLeft + paint.measureText(
                     composerText.substring(line.start, cursorInLine),
                 )
-                canvas.drawRect(cursorX, baseline - 16f, cursorX + 2f, baseline + 3f, paint)
+                val candidate = composerCandidate
+                if (candidate != null) {
+                    // Knob picker candidate (user design 2026-08-14): a
+                    // highlighted letter at the cursor — visually distinct
+                    // from committed text until the 1 s confirmation.
+                    val letter = candidate.toString()
+                    val letterWidth = paint.measureText(letter)
+                    paint.style = Paint.Style.FILL
+                    paint.color = Color.GREEN
+                    paint.alpha = 230
+                    canvas.drawRect(cursorX, baseline - 16f, cursorX + letterWidth + 4f, baseline + 3f, paint)
+                    paint.color = Color.BLACK
+                    paint.alpha = 255
+                    canvas.drawText(letter, cursorX + 2f, baseline, paint)
+                    resetPaint()
+                    paint.isFakeBoldText = false
+                    paint.textSize = 16f
+                } else {
+                    canvas.drawRect(cursorX, baseline - 16f, cursorX + 2f, baseline + 3f, paint)
+                }
             }
         }
         canvas.restore()
