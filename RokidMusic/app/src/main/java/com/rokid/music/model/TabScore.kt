@@ -232,7 +232,11 @@ data class Event(
                 tick = obj.optInt("tick", 0),
                 duration = Duration.parse(obj.optJSONObject("duration")),
                 voice = obj.optInt("voice", 1),
-                beamGroup = if (obj.has("beamGroup")) obj.optString("beamGroup") else null,
+                // JSONObject.has() is also true for an explicit JSON null.
+                // Calling optString() in that case turns the null into the literal
+                // group id "null", accidentally joining every ungrouped short note.
+                beamGroup = if (obj.isNull("beamGroup")) null
+                    else obj.optString("beamGroup").takeIf { it.isNotEmpty() },
                 notes = parseArray(obj.optJSONArray("notes")) { Note.parse(it) },
                 articulations = arts
             )
