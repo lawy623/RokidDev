@@ -8,7 +8,7 @@ AR 眼镜应用开发 monorepo，面向 [Rokid Glass](https://rokid.github.io/gl
 RokidDev/
 ├── README.md           ← 本文件
 ├── CLAUDE.md           ← 共享 Rokid 开发知识（硬件交互、构建管线、安全约束）
-├── .docs/              ← 离线开发文档（Glass SDK、AIUI 框架、社区参考索引）
+├── .docs/              ← 离线开发文档（Glass SDK、AIUI 框架、社区参考索引；内容下载自 Rokid 官方文档站 https://rokid.github.io/glass-docs/，版权归 Rokid 所有）
 ├── RokidGame/          ← 头部控制的 Flappy Bird 游戏
 ├── RokidMusic/         ← 电吉他六线谱阅读器 & 播放器
 └── RokidTerm/          ← 远程 Claude Code 终端客户端（SSH + tmux + 服务端 ASR）
