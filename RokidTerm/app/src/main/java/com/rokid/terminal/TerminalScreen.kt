@@ -26,6 +26,12 @@ class TerminalScreen(
     private var chunkNanos = 0L
     private val capturedThisChunk = HashSet<Int>()
     private val pendingCaptures = LinkedHashMap<Int, List<TerminalCell>>()
+    // Ticker guard state (2026-08-14): a row position whose consecutive
+    // replace-captures differ only in digits is a live repaint area
+    // (Claude's ticking timer — parens, bare seconds, any future format).
+    // Such rows are never captured; state resets on reset()/resize().
+    private val lastCapturedText = HashMap<Int, String>()
+    private val tickerRows = HashSet<Int>()
 
     private class Buffer(columns: Int, rows: Int) {
         var cells = blankCells(columns, rows)
@@ -99,6 +105,8 @@ class TerminalScreen(
         lastWriteNanos = LongArray(rows)
         capturedThisChunk.clear()
         pendingCaptures.clear()
+        lastCapturedText.clear()
+        tickerRows.clear()
         return true
     }
 
@@ -140,6 +148,8 @@ class TerminalScreen(
         lastPrintedText = " "
         lastPrintedWidth = 1
         joinNextCodePoint = false
+        lastCapturedText.clear()
+        tickerRows.clear()
     }
 
     fun snapshot(scrollOffsetRows: Int = 0): List<List<TerminalCell>> {
@@ -792,11 +802,47 @@ class TerminalScreen(
         // A blank row's "old content" is nothing — first paints of a frame
         // must not fabricate empty history rows.
         if (active.cells[row].all { it.text.isBlank() }) return
+        // Ticker guard: Claude's ticking timer repaints the SAME row ~1/s
+        // with only the digits changing ("…(2m 5s)" → "…(2m 6s)" → …).
+        // Pattern detection is format-independent — any timer render
+        // (parens, bare seconds, a future redesign) is a row whose
+        // consecutive captures differ only in digits. The first tick
+        // captures, the second proves the pattern (dropped), the rest are
+        // dropped; a non-variant row at the same position resets the flag.
+        val previous = lastCapturedText[row]
+        if (previous != null) {
+            if (isDigitVariant(previous, oldText)) {
+                tickerRows.add(row)
+                return
+            }
+            tickerRows.remove(row)
+        }
+        lastCapturedText[row] = oldText
         pendingCaptures[row] = active.cells[row].toList()
     }
 
     private fun compactCellRow(row: Array<TerminalCell>): String =
         row.joinToString("") { cell -> if (cell.continuation) "" else cell.text }.filterNot { it.isWhitespace() }
+
+    /** True when a and b differ only in their digit runs — the ticking-timer
+     *  repaint pattern ("…(2m 5s)" vs "…(2m 6s)", "进度 10%" vs "进度 20%").
+     *  Identical text is not a variant (same-content rewrites are dropped
+     *  elsewhere), and PURE-digit rows (seq output "123" vs "124" — real
+     *  content) are not variants either: a timer always carries non-digit
+     *  text around the digits, so the non-digit skeleton must be non-trivial.
+     *  The tool-output "●" marker at column 0 and leading whitespace are
+     *  normalized away — Claude alternates the marker with a blank on
+     *  repaints (trace 2026-08-14: "● …" vs "  …" every other tick), which
+     *  otherwise makes consecutive timer ticks look like different rows. */
+    private fun isDigitVariant(a: String, b: String): Boolean {
+        if (a == b) return false
+        if (!a.any { it.isDigit() } || !b.any { it.isDigit() }) return false
+        val normalize = { s: String -> s.filterNot { it.isDigit() || it == '●' }.trimStart() }
+        val aSkeleton = normalize(a)
+        val bSkeleton = normalize(b)
+        if (aSkeleton.length < 2 || bSkeleton.length < 2) return false
+        return aSkeleton == bSkeleton
+    }
 
     /**
      * Drops captured Claude noise rows (status ticks + pipe-form markdown

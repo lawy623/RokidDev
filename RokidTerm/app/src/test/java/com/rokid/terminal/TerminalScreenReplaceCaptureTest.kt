@@ -222,6 +222,110 @@ class TerminalScreenReplaceCaptureTest {
     }
 
     @Test
+    fun toolRunParenTimerRowIsNotCaptured() {
+        // Second flood report 2026-08-14: the newest Claude Code renders the
+        // running-tool line with a rising CLOSED-PAREN elapsed timer —
+        // "    && ls -la hkustgz_low.* (2m 5s)" — 72 per-second ticks
+        // entered the history (the old regex required a "·" after the
+        // seconds). Each tick repaints the row; none may be captured.
+        val screen = TerminalScreen(columns = 54, rows = 6, excludedBottomRows = 2)
+        screen.consume(altEnter, nowNanos = 0)
+        screen.consume(paint(screen, 0, "    && ls -la hkustgz_low.* (2m 5s)"), nowNanos = 0)
+        screen.consume(paint(screen, 0, "    && ls -la hkustgz_low.* (2m 6s)"), nowNanos = 400_000_000L)
+        screen.consume(paint(screen, 0, "    && ls -la hkustgz_low.* (2m 7s)"), nowNanos = 800_000_000L)
+
+        assertTrue(screen.drainReplaceCaptures().isEmpty())
+    }
+
+    @Test
+    fun toolRunParenSecondsTimerRowIsNotCaptured() {
+        val screen = TerminalScreen(columns = 54, rows = 6, excludedBottomRows = 2)
+        screen.consume(altEnter, nowNanos = 0)
+        screen.consume(paint(screen, 0, "    && ls -la hkustgz_low.* (10s)"), nowNanos = 0)
+        screen.consume(paint(screen, 0, "    && ls -la hkustgz_low.* (11s)"), nowNanos = 400_000_000L)
+        screen.consume(paint(screen, 0, "    && ls -la hkustgz_low.* (12s)"), nowNanos = 800_000_000L)
+
+        assertTrue(screen.drainReplaceCaptures().isEmpty())
+    }
+
+    @Test
+    fun staticSecondsEndingRowIsStillCaptured() {
+        // User guard 2026-08-14: a bare "Ns" ending alone must NOT be
+        // status — static content like "提交成功 3s" survives the filter.
+        val screen = TerminalScreen(columns = 54, rows = 6, excludedBottomRows = 2)
+        screen.consume(altEnter, nowNanos = 0)
+        screen.consume(paint(screen, 0, "提交成功 3s"), nowNanos = 0)
+
+        screen.consume(paint(screen, 0, "NEXT"), nowNanos = 400_000_000L)
+
+        val captured = screen.drainReplaceCaptures()
+        assertEquals(1, captured.size)
+        assertTrue(rowText(captured, 0).startsWith("提交成功 3s"))
+    }
+
+    @Test
+    fun tickingRowWithUnrecognizedFormatIsNotFlooded() {
+        // The ticker guard is FORMAT-INDEPENDENT: a row repainted ~1/s with
+        // only the digits changing is a live timer even without any known
+        // content signature (this bare "deploy --check 12s" has no parens
+        // and no "&&" — a hypothetical future render). Only the first tick
+        // may enter history; the rest are dropped.
+        val screen = TerminalScreen(columns = 54, rows = 6, excludedBottomRows = 2)
+        screen.consume(altEnter, nowNanos = 0)
+        screen.consume(paint(screen, 0, "deploy --check 12s"), nowNanos = 0)
+        screen.consume(paint(screen, 0, "deploy --check 13s"), nowNanos = 400_000_000L)
+        screen.consume(paint(screen, 0, "deploy --check 14s"), nowNanos = 800_000_000L)
+        screen.consume(paint(screen, 0, "deploy --check 15s"), nowNanos = 1_200_000_000L)
+
+        val captured = screen.drainReplaceCaptures()
+        assertEquals(1, captured.size)
+        assertTrue(rowText(captured, 0).startsWith("deploy --check 12s"))
+    }
+
+    @Test
+    fun toolOutputTickerWithAlternatingMarkerIsNotFlooded() {
+        // Trace replica (2026-08-14, third report): the running-tool line
+        // ticks via TWO repaints per second — the ● marker at col 1
+        // ALTERNATES with a blank (separate chunks) and the timer digits
+        // are repainted in place. The alternating marker makes consecutive
+        // oldTexts differ by more than just digits ("● …" vs "  …"), which
+        // defeated the plain digit-variant guard; the marker must be
+        // normalized away. This format ("deploy --check 12s") deliberately
+        // has no content signature — it tests the FORMAT-INDEPENDENT guard.
+        // The processor drains per frame, so drain per tick like it does.
+        val screen = TerminalScreen(columns = 54, rows = 36, excludedBottomRows = 7)
+        screen.consume(altEnter, nowNanos = 0)
+        screen.consume(paint(screen, 21, "● deploy --check 12s"), nowNanos = 0)
+        var t = 400_000_000L
+        var total = 0
+        for (sec in 1..5) {
+            screen.consume(paint(screen, 21, if (sec % 2 == 1) "●" else " ", col = 1), nowNanos = t)
+            screen.consume(paint(screen, 21, "deploy --check ${12 + sec}s", col = 3), nowNanos = t + 100_000_000L)
+            total += screen.drainReplaceCaptures().size
+            t += 1_000_000_000L
+        }
+        assertEquals(1, total) // only the first tick may enter history
+    }
+
+    @Test
+    fun nonTickingRowsAtSamePositionStillCapture() {
+        // A genuinely new row at the same position resets the ticker flag.
+        // Captures fire when a settled row is OVERWRITTEN, and
+        // pendingCaptures has ONE slot per row — drain between stages.
+        val screen = TerminalScreen(columns = 54, rows = 6, excludedBottomRows = 2)
+        screen.consume(altEnter, nowNanos = 0)
+        screen.consume(paint(screen, 0, "deploy --check 12s"), nowNanos = 0)
+        screen.consume(paint(screen, 0, "deploy --check 13s"), nowNanos = 400_000_000L) // overwrites 12s -> captured
+        assertEquals(1, screen.drainReplaceCaptures().size)
+        screen.consume(paint(screen, 0, "deploy --check 14s"), nowNanos = 800_000_000L) // pattern proven -> dropped
+        assertTrue(screen.drainReplaceCaptures().isEmpty())
+        screen.consume(paint(screen, 0, "构建完成"), nowNanos = 1_200_000_000L) // overwrites the ticker row -> dropped
+        assertTrue(screen.drainReplaceCaptures().isEmpty())
+        screen.consume(paint(screen, 0, "下一步"), nowNanos = 1_600_000_000L) // overwrites 构建完成 -> captured (reset)
+        assertEquals(1, screen.drainReplaceCaptures().size)
+    }
+
+    @Test
     fun realContentRowIsStillCaptured() {
         // "● 已提交 …" is a real tool-output row — the ● marker alone must
         // not trigger the status signature.
@@ -245,13 +349,14 @@ class TerminalScreenReplaceCaptureTest {
                 "✻ Combobulating… (1m 10s · thought for 4s)",
                 "❯ 请等待 3m 59s 后重试",
                 "✻ Brewed for 3m 59s",
+                "● Generating LOD1 at 50% decimation · 1m 40s",
                 "选 A 还是 B？或者先不推",
             ).map { text ->
                 Array(54) { col -> TerminalCell(text = if (col < text.length) text[col].toString() else " ") }
             },
         )
 
-        assertEquals(2, screen.purgeStatusRows())
+        assertEquals(3, screen.purgeStatusRows())
         assertEquals(2, screen.scrollbackSize())
         // User rows and real content survive; the status rows are gone.
         val text = screen.exportScrollbackText()

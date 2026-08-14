@@ -287,7 +287,10 @@ class MainActivity : Activity() {
             val old = rowText(prev[row])
             val new = rowText(frame.cells[row])
             if (old != new) {
-                if (!ClaudeStatusRows.isStatusRow(old) || !ClaudeStatusRows.isStatusRow(new)) {
+                // Suppress only PURE animation (spinner/thinking rows with
+                // no timer). Timer rows must keep repainting — the elapsed
+                // time is information the user needs live (2026-08-14).
+                if (!ClaudeStatusRows.isRenderSuppressible(old) || !ClaudeStatusRows.isRenderSuppressible(new)) {
                     return true
                 }
             }

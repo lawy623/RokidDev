@@ -144,7 +144,11 @@ Verified on the current glasses and Tencent Cloud server:
   CONTENT (positions shift between versions — "Cooking for" at row 29,
   "Combobulating…" at row 28):
   - thinking/tool status rows: spinner glyph (✻✶✽✢✹) + ellipsis verb,
-    ticking timer (`for 3m 59s`, `(30s ·`), `(thinking…)` state;
+    ticking timer (`for 3m 59s`, `(30s ·`, closed paren `(2m 5s)`/`(10s)`,
+    row-end `· 1m 40s`/`· 2s` — each form appears in a different Claude
+    version), `(thinking…)` state; row text is SGR-stripped before
+    matching and the paren/`·` forms are end-anchored so prose like
+    "用了 (2m 9s) 完成" stays content;
   - pipe-form markdown tables (`| 方式 | 行为 | 现状 |`): streaming
     INTERMEDIATES — the final repaint renders box-drawing tables, and the
     pipe copy (misaligned) must not become history;
@@ -156,6 +160,23 @@ Verified on the current glasses and Tencent Cloud server:
     text is contained in any other on-screen row (≥6 chars; `❯` user rows
     exempt). One general rule that prevents the jumbled multi-generation
     fragments, duplicated box tables and repeated lines.
+  - **ticker guard (format-independent)**: a row position whose
+    consecutive captures differ only in their digits is a live repaint
+    area — Claude's ticking timer in ANY future format. First tick
+    captures, the second proves the pattern, the rest are dropped; a
+    non-variant row at the same position resets the flag. Pure-digit rows
+    (`seq 1 2000` output) are not variants (a timer always carries
+    non-digit text). The tool-output `●` marker and leading whitespace are
+    normalized away before comparing — Claude alternates the marker with
+    a blank on repaints ("● …" vs "  …", trace 2026-08-14), which
+    otherwise made consecutive ticks look like different rows (401-row
+    flood from "Generating LOD1 at 50% decimation · 1m Ns").
+  - **render/history decoupling**: `isStatusRow` excludes status rows from
+    HISTORY (capture + purge). The RENDER path uses `isRenderSuppressible`
+    = status rows WITHOUT a timer — pure spinner/thinking animation may
+    freeze on screen, but timer rows must keep repainting every second
+    (the elapsed time tells the user the tool is still running; freezing
+    it hid completion — user report 2026-08-14).
   `purgeStatusRows()` (status + pipe-table + tool rows) cleans rows
   captured before the signatures existed; it runs on settle and on every
   persist, so files are rewritten clean.
