@@ -1,8 +1,14 @@
-# RokidTerminal（RokidTerm）
+# <img src="assets/app-icon.png" width="32" alt="RokidTerm"> RokidTerminal（RokidTerm）
 
 面向 Rokid Glass 的**远程 Claude Code 终端客户端**。App 通过 SSH 直连远程开发服务器，附着到命名 `tmux` 会话上运行 Claude Code（DeepSeek 凭据），把终端画面渲染到眼镜的绿色单色屏上。
 
 功能：真实发送/接收 Claude 对话、本地输入框（composer）、服务端语音输入（SenseVoice）、本地历史捕获与持久化、多输入设备支持、命令面板（动态命令列表）。
+
+<p align="center">
+<img src="assets/endpoints.png" width="230" alt="服务器选择">&nbsp;&nbsp;&nbsp;&nbsp;
+<img src="assets/conversations.png" width="230" alt="对话选择">&nbsp;&nbsp;&nbsp;&nbsp;
+<img src="assets/conversation.png" width="230" alt="真实对话">
+</p>
 
 ## 架构
 
@@ -26,7 +32,7 @@ SSH PTY 字节流
 - 断线重连恢复 `cloud-claude` tmux 会话；运行中的任务（如 `sleep`）不受影响。
 - Claude 通过 `/home/rokid/bin/rokid-claude` 启动（独立 `rokid` 凭据），带 `--effort max --dangerously-skip-permissions`。
 - 显示网格 **54 列 × 36 行**（480×640，实测确认），完整宽字符处理。
-- `FLAG_KEEP_SCREEN_ON` 保持屏幕常亮；`FLAG_SECURE` 开发期故意关闭（便于 ADB 截图与终端流调试），**发布前需恢复**。
+- `FLAG_KEEP_SCREEN_ON` 保持屏幕常亮；`FLAG_SECURE`（截图保护）开发期关闭（便于 ADB 截图与终端流调试），**2026-08-14 README 截图采集完成后启用**（开源加固）。
 - 语音输入端到端验证（2026-08-05）：录音 → 服务端 SenseVoice 识别（`asr-fwd` 通道）→ 草稿 → 发送。
 
 ## 输入设备
@@ -92,7 +98,7 @@ export ANDROID_HOME="$HOME/Library/Android/sdk"
 - 服务器账号为非特权 `rokid` 用户（无 sudo、非 docker 等特权组），authorized_keys 带限制。
 - 语音文本必须先显示为草稿、显式确认后才发送，不做任意语音→shell 执行。
 - 日志中不输出草稿文本、识别文本、终端正文或源码。
-- `FLAG_SECURE` 发布前恢复。
+- 截图保护（`FLAG_SECURE`）：README 截图采集完成后启用（2026-08-14 决定）。
 
 ## 服务端 ASR（third_party/asr-server）
 
@@ -134,4 +140,4 @@ bash server/deploy.sh <user>@<host> /opt/claude/rokid-claude   # 自定义启动
   基于服务端 `rokid-sessions` helper（list/status/switch/delete/export/adopt/sweep）+
   每会话滚动历史；切换对话/退出 App 后台任务持续运行、可随时切回；删除对话干净回收
   （窗口/进程/文件）；空闲对话自动清扫（连接时每 5 分钟）。
-- 发布前：恢复 `FLAG_SECURE`、release 清理、移除调试路径。
+- 发布前：启用 `FLAG_SECURE`（截图采集已完成，2026-08-14）、release 清理、移除调试路径。

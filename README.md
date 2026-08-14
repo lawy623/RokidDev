@@ -24,6 +24,10 @@ RokidDev/
 | **[RokidMusic](./RokidMusic/)** | 电吉他 Tab 谱阅读/播放/编辑，支持手机 WiFi 传谱 | 触摸板 + 手机浏览器 | ✅ 核心功能完成 |
 | **[RokidTerm](./RokidTerm/)** | 远程 Claude Code 终端：SSH 直连 + tmux 会话恢复 + 本地 composer + 服务端 ASR（SenseVoice） | 触摸板 + COIDEA 键盘 + INMO Ring4 | ✅ 日常可用（语音输入已验证） |
 
+| <img src="RokidGame/assets/home.png" width="230" alt="RokidGame 标题页"> | <img src="RokidMusic/assets/start.png" width="230" alt="RokidMusic 开始页"> | <img src="RokidTerm/assets/conversation.png" width="230" alt="RokidTerm 真实对话"> |
+|:---:|:---:|:---:|
+| **RokidGame** | **RokidMusic** | **RokidTerm** |
+
 ## 开发前置条件
 
 - macOS + [Android Studio](https://developer.android.com/studio)

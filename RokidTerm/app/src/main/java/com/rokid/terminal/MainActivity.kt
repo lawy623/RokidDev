@@ -301,6 +301,10 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        // Screenshot protection (enabled 2026-08-14 after the README
+        // screenshots were captured — open-source hardening). The window
+        // content is no longer capturable via ADB screencap.
+        window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         endpointStore = EndpointStore(this)
         traceRecorder = TerminalTraceRecorder(filesDir)
         importPendingProfile()

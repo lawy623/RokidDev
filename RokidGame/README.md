@@ -1,6 +1,11 @@
-# RokidGame — Flappy Bird for Rokid Glass
+# <img src="assets/app-icon.png" width="32" alt="RokidGame"> RokidGame — Flappy Bird for Rokid Glass
 
 头部控制的 Flappy Bird。无需校准 — 点头即飞。
+
+<p align="center">
+<img src="assets/home.png" width="250" alt="标题页">&nbsp;&nbsp;&nbsp;&nbsp;
+<img src="assets/game.png" width="250" alt="游戏中">
+</p>
 
 ## 操作方式
 

@@ -518,7 +518,7 @@ Verified on the current glasses and Tencent Cloud server:
 - Recommended `authorized_keys` restrictions are `no-agent-forwarding,no-port-forwarding,no-X11-forwarding,no-user-rc`. Do not add `no-pty`; Claude Code and tmux require a PTY.
 - The remote Claude launcher is fixed in the APK as `/home/rokid/bin/rokid-claude`; endpoint profiles must not supply arbitrary commands.
 - Permission prompts are intentionally bypassed with `--dangerously-skip-permissions` for this dedicated remote-terminal workflow. Keep the SSH account unprivileged, and do not extend this choice into `sudo`, Docker, root access, or arbitrary endpoint-supplied commands.
-- Windows use `FLAG_KEEP_SCREEN_ON`. At the user’s explicit request during active development, `FLAG_SECURE` is currently disabled for every build so ADB screenshots and terminal-stream debugging remain available. Re-enabling screenshot protection before production release is a deliberate future hardening task.
+- Windows use `FLAG_KEEP_SCREEN_ON`. At the user’s explicit request, `FLAG_SECURE` (screenshot protection) is disabled during development so ADB screenshots and terminal-stream debugging work; it will be ENABLED once the README screenshots are captured (2026-08-14 — open-source hardening).
 - The exported launcher must not accept endpoint configuration through Intent extras. Debug provisioning uses an app-private one-shot JSON file copied with ADB `run-as`, then deletes it after import.
 - Do not add arbitrary voice-to-shell execution. Future speech text must be shown as a draft and explicitly confirmed before it is sent to Claude.
 - Never log draft text, partial/final speech recognition text, terminal body text, or source code to logcat.
@@ -542,7 +542,7 @@ export ANDROID_HOME="$HOME/Library/Android/sdk"
 Before a hardware handoff, verify:
 
 - `adb install -r` preserves the endpoint profile and encrypted identity.
-- During active development, verify `KEEP_SCREEN_ON` remains enabled and `FLAG_SECURE` remains deliberately disabled so ADB screenshots and app-private terminal traces are available. Re-enable screenshot protection as a separate production-hardening step.
+- Verify `KEEP_SCREEN_ON` remains enabled and `FLAG_SECURE` stays disabled during development so ADB screenshots and app-private terminal traces are available; enable it after the README screenshots are captured (2026-08-14).
 - Wi-Fi has a validated default network and the server SSH port is reachable.
 - Host-key rejection, public-key authentication, reconnect, tmux resume, Back behavior, focus, and the default 480x640 -> 46x30 redraw all behave correctly.
 - No API keys, private keys, Claude output, or source code are printed to logcat.

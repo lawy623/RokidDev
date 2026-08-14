@@ -1,6 +1,11 @@
-# RokidMusic — 电吉他六线谱阅读器
+# <img src="assets/app-icon.png" width="32" alt="RokidMusic"> RokidMusic — 电吉他六线谱阅读器
 
 Rokid Glass 上的电吉他 Tab 谱阅读/播放/编辑工具。绿色单色 Canvas 渲染 + PCM 合成音频 + WiFi 手机传谱。
+
+<p align="center">
+<img src="assets/start.png" width="250" alt="开始页">&nbsp;&nbsp;&nbsp;&nbsp;
+<img src="assets/score.png" width="250" alt="六线谱">
+</p>
 
 ## 功能
 
