@@ -148,3 +148,33 @@ can be browsed from any device. A public read-only deployment may serve the
 static renderer, assets, `data/music/*.tab.json`, and `data/music/index.json`.
 Do not expose the local development `/api/save-score` endpoint publicly without
 authentication, authorization, validation, backups, and write-rate limits.
+
+## Public Deployment Sync (guitarplayer.dreamscrf.com)
+
+The public site is a **read-only demo** of the web renderer, served by Caddy on
+this server from `/srv/rokid-music-public/` — the `gh-pages` branch worktree of
+`lawy623/RokidDev` (NOT GitHub Pages hosting). The live
+`tab_renderer.html` is the **hardened read-only variant** of the local one:
+Public Demo badge + subtitle, Edit and Save JSON buttons hidden
+(`display:none`), no "New empty score" option, no auto-enter edit mode, disabled
+`saveEditedScore()`, no `file://` redirect.
+
+**When modifying the local `tab_renderer.html` (or score data), you MUST:**
+
+1. **Sync to the gh-pages renderer**: copy the new local file to
+   `/srv/rokid-music-public/tab_renderer.html`, then re-apply the read-only
+   hardening (never copy the file wholesale — a raw copy re-enables editing).
+   Carry over new features (e.g. the A.H. button) while restoring all hardening
+   points listed above.
+2. **Commit + push the `gh-pages` branch** from `/srv/rokid-music-public`
+   (it is the backup of the live deployment).
+3. **Remind the user to deploy/verify on the server**: Caddy serves the
+   directory live, so the copied file takes effect immediately — confirm with
+   the user, then verify at
+   `https://guitarplayer.dreamscrf.com/tab_renderer.html` (expect HTTP 200 and
+   the Public Demo badge).
+
+**Data files**: the public `data/music/index.json` is a curated 10-song demo
+list — do not overwrite it with the local dev-state `index.json`. Score
+`.tab.json` fixes should be synced (e.g. the guanghuisuiyue m8e9n1 string-4→3
+fix was synced 2026-08-14).
