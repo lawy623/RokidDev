@@ -275,6 +275,20 @@
   }
   .inline-edit-input:focus { border-bottom-style: solid; }
 
+  .public-badge {
+    display: inline-block;
+    margin-left: 10px;
+    padding: 0 6px;
+    font-size: 10px;
+    line-height: 18px;
+    color: var(--green-dim);
+    border: 1px solid var(--green-dim);
+    border-radius: 3px;
+    vertical-align: middle;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
   .controls {
     margin-top: 8px;
     display: flex;
@@ -588,7 +602,7 @@
     <div class="start-hero">
       <div>
         <h1 class="start-title">Guitar Player</h1>
-        <div class="start-subtitle">Select a TAB score for Rokid green display.</div>
+        <div class="start-subtitle">Select a TAB score — Public Demo</div>
       </div>
       <div class="guitar-silhouette" aria-hidden="true">
         <img src="assets/guitar-player-lineart-transparent.png" alt="">
@@ -612,12 +626,12 @@
     <header class="player-header">
       <div>
         <h1><span id="title">RokidMusic Tab Renderer</span><span id="titlePencil" class="edit-pencil" title="Edit title">✎</span></h1>
-        <div class="meta"><span id="meta">Rokid Glass AR Viewer</span><span id="metaPencil" class="edit-pencil" title="Edit artist">✎</span></div>
+        <div class="meta"><span id="meta">Rokid Glass AR Viewer</span><span class="public-badge">Public Demo</span><span id="metaPencil" class="edit-pencil" title="Edit artist">✎</span></div>
       </div>
       <div>
         <div id="hud" class="hud"></div>
         <div class="controls">
-          <button id="editBtn" class="edit-toggle" type="button">Edit</button>
+          <button id="editBtn" class="edit-toggle" type="button" style="display:none" title="Editing disabled in public demo">Edit</button>
           <button id="backBtn" type="button">Back</button>
           <button id="playBtn" type="button">Play</button>
           <button id="stopBtn" type="button">Pause</button>
@@ -630,7 +644,7 @@
         <div id="editorInfo" class="editor-info">
           <span id="editorInfoText" class="editor-info-text">Edit mode is off.</span>
           <span class="editor-info-actions">
-            <button data-editor-action="save" type="button">Save JSON</button>
+            <button data-editor-action="save" type="button" style="display:none" title="Save disabled in public demo">Save JSON</button>
             <button data-editor-action="download" type="button">Download</button>
             <button data-editor-action="undo" type="button">Undo</button>
           </span>
@@ -876,10 +890,7 @@ const editor = {
 
 async function main() {
   if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
-  if (location.protocol === 'file:') {
-    location.replace('http://localhost:8765/tab_renderer.html');
-    return;
-  }
+  // Public deployment: no file:// redirect needed
   bindAppControls();
   window.addEventListener('resize', () => {
     fitAppToViewport();
@@ -942,12 +953,7 @@ async function populateScoreSelect() {
   const select = document.getElementById('scoreSelect');
   var drop = select.querySelector('.score-select-dropdown');
   drop.innerHTML = '';
-  // "New empty score" entry at the top
-  var newOpt = document.createElement('div');
-  newOpt.className = 'score-select-option score-select-new';
-  newOpt.textContent = '✚  New empty score...';
-  newOpt.dataset.action = 'new';
-  drop.appendChild(newOpt);
+  // Public demo: "New empty score" removed (save disabled)
   for (const option of options) {
     var el = document.createElement('div');
     el.className = 'score-select-option';
@@ -982,8 +988,8 @@ async function enterSelectedScore() {
     document.getElementById('startStatus').textContent = 'Creating new score: ' + label;
     renderScore(score, null);
     showPlayerScreen();
-    // Auto-enter edit mode so user can start building the score immediately.
-    setEditorEnabled(true);
+    // Public demo: editing disabled, skip auto-enter edit mode
+    // setEditorEnabled(true);
     return;
   }
   const url = appState.selectedScoreUrl || DEFAULT_SCORE_URL;
@@ -4384,27 +4390,9 @@ function removeDanglingSpanners(removedIds) {
 }
 
 async function saveEditedScore() {
-  if (!playback.score) return;
-  var url = appState.currentScoreUrl || appState.selectedScoreUrl;
-  // New score — auto-generate a filename from the title.
-  if (!url) {
-    var title = (playback.score.metadata?.title || 'Untitled').replace(/[^a-zA-Z0-9_一-鿿]/g, '_');
-    url = 'data/music/' + title + '.tab.json';
-    appState.currentScoreUrl = url;
-  }
-  const path = normalizeScoreUrl(url);
-  try {
-    const response = await fetch('/api/save-score', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path, score: playback.score })
-    });
-    if (!response.ok) throw new Error(await response.text());
-    editor.dirty = false;
-    updateEditorPanel('Saved JSON to ' + path);
-  } catch (error) {
-    updateEditorPanel('Save failed: start tools/dev_score_server.py to write back the loaded JSON. ' + error.message);
-  }
+  // Public demo: server-side save is disabled. Use Download button instead.
+  updateEditorPanel('Save disabled in public demo. Use Download button to save a local copy.');
+  return;
 }
 
 function downloadEditedScore() {
